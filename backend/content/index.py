@@ -1,11 +1,10 @@
 """
-API для получения и редактирования контента сайта: тексты, контакты, двери.
-Изменения сразу отображаются на сайте.
+API контента: тексты сайта, контакты, двери, пользователи.
+Роутинг через query param: ?action=...
 """
 import json
 import os
 import psycopg2
-from datetime import datetime, timezone
 
 SCHEMA = os.environ.get('MAIN_DB_SCHEMA', 't_p87395805_secret_key_draw')
 CORS = {
@@ -42,8 +41,10 @@ def handler(event: dict, context) -> dict:
     if event.get('httpMethod') == 'OPTIONS':
         return {'statusCode': 200, 'headers': CORS, 'body': ''}
 
-    path = event.get('path', '').rstrip('/')
     method = event.get('httpMethod', 'GET')
+    qs = event.get('queryStringParameters') or {}
+    action = qs.get('action', '')
+
     body = {}
     if event.get('body'):
         try:
@@ -53,135 +54,107 @@ def handler(event: dict, context) -> dict:
 
     token = (event.get('headers') or {}).get('X-Authorization', '').replace('Bearer ', '').strip()
 
-    if method == 'GET' and (path == '' or path.endswith('/')):
-        return ok({'status': 'ok'})
+    if not action:
+        return ok({'status': 'ok', 'service': 'content'})
 
     conn = get_conn()
-
     try:
-        # GET /site — get all site content
-        if method == 'GET' and path.endswith('/site'):
+        # site — get
+        if action == 'get_site':
             with conn.cursor() as cur:
                 cur.execute(f"SELECT key, value, label FROM {SCHEMA}.site_content ORDER BY key")
                 rows = cur.fetchall()
-            data = {r[0]: {'value': r[1], 'label': r[2]} for r in rows}
-            return ok(data)
+            return ok({r[0]: {'value': r[1], 'label': r[2]} for r in rows})
 
-        # PUT /site — update site content (admin only)
-        if method == 'PUT' and path.endswith('/site'):
+        # site — update (admin)
+        if action == 'update_site':
             user = get_user_by_token(conn, token)
             if not user or user['role'] != 'admin':
                 return err('Только для администратора', 403)
             updates = body.get('updates', {})
             with conn.cursor() as cur:
                 for key, value in updates.items():
-                    cur.execute(
-                        f"UPDATE {SCHEMA}.site_content SET value=%s, updated_at=NOW() WHERE key=%s",
-                        (str(value), key)
-                    )
+                    cur.execute(f"UPDATE {SCHEMA}.site_content SET value=%s, updated_at=NOW() WHERE key=%s", (str(value), key))
             conn.commit()
             return ok({'message': 'Контент обновлён'})
 
-        # GET /contacts — get contacts
-        if method == 'GET' and path.endswith('/contacts'):
+        # contacts — get
+        if action == 'get_contacts':
             with conn.cursor() as cur:
                 cur.execute(f"SELECT key, value, label FROM {SCHEMA}.contacts_info ORDER BY key")
                 rows = cur.fetchall()
-            data = {r[0]: {'value': r[1], 'label': r[2]} for r in rows}
-            return ok(data)
+            return ok({r[0]: {'value': r[1], 'label': r[2]} for r in rows})
 
-        # PUT /contacts — update contacts (admin)
-        if method == 'PUT' and path.endswith('/contacts'):
+        # contacts — update (admin)
+        if action == 'update_contacts':
             user = get_user_by_token(conn, token)
             if not user or user['role'] != 'admin':
                 return err('Только для администратора', 403)
             updates = body.get('updates', {})
             with conn.cursor() as cur:
                 for key, value in updates.items():
-                    cur.execute(
-                        f"UPDATE {SCHEMA}.contacts_info SET value=%s, updated_at=NOW() WHERE key=%s",
-                        (str(value), key)
-                    )
+                    cur.execute(f"UPDATE {SCHEMA}.contacts_info SET value=%s, updated_at=NOW() WHERE key=%s", (str(value), key))
             conn.commit()
             return ok({'message': 'Контакты обновлены'})
 
-        # GET /doors — get all doors
-        if method == 'GET' and path.endswith('/doors'):
+        # doors — public list
+        if action == 'get_doors':
             with conn.cursor() as cur:
                 cur.execute(
-                    f"""SELECT id, name, prize, prize_icon, key_price, rarity, keys_sold, is_active, sort_order
-                        FROM {SCHEMA}.doors WHERE is_active = TRUE ORDER BY sort_order""")
+                    f"SELECT id,name,prize,prize_icon,key_price,rarity,keys_sold,is_active,sort_order FROM {SCHEMA}.doors WHERE is_active=TRUE ORDER BY sort_order"
+                )
                 rows = cur.fetchall()
             keys = ['id','name','prize','prize_icon','key_price','rarity','keys_sold','is_active','sort_order']
             return ok([dict(zip(keys, r)) for r in rows])
 
-        # GET /doors/all — admin: all doors including inactive
-        if method == 'GET' and path.endswith('/doors/all'):
+        # doors — all (admin)
+        if action == 'get_all_doors':
             user = get_user_by_token(conn, token)
             if not user or user['role'] != 'admin':
                 return err('Только для администратора', 403)
             with conn.cursor() as cur:
                 cur.execute(
-                    f"""SELECT id, name, prize, prize_icon, key_price, rarity, keys_sold, is_active, sort_order
-                        FROM {SCHEMA}.doors ORDER BY sort_order""")
+                    f"SELECT id,name,prize,prize_icon,key_price,rarity,keys_sold,is_active,sort_order FROM {SCHEMA}.doors ORDER BY sort_order"
+                )
                 rows = cur.fetchall()
             keys = ['id','name','prize','prize_icon','key_price','rarity','keys_sold','is_active','sort_order']
             return ok([dict(zip(keys, r)) for r in rows])
 
-        # PUT /doors/{id} — update door (admin)
-        if method == 'PUT' and '/doors/' in path:
+        # update door (admin)
+        if action == 'update_door':
             user = get_user_by_token(conn, token)
             if not user or user['role'] != 'admin':
                 return err('Только для администратора', 403)
-            door_id = path.split('/doors/')[-1].split('/')[0]
-            name = body.get('name')
-            prize = body.get('prize')
-            prize_icon = body.get('prize_icon')
-            key_price = body.get('key_price')
-            rarity = body.get('rarity')
-            is_active = body.get('is_active')
+            door_id = body.get('id')
+            if not door_id:
+                return err('Нет id двери')
+            fields = ['name','prize','prize_icon','key_price','rarity','is_active']
             with conn.cursor() as cur:
-                if name is not None:
-                    cur.execute(f"UPDATE {SCHEMA}.doors SET name=%s WHERE id=%s", (name, door_id))
-                if prize is not None:
-                    cur.execute(f"UPDATE {SCHEMA}.doors SET prize=%s WHERE id=%s", (prize, door_id))
-                if prize_icon is not None:
-                    cur.execute(f"UPDATE {SCHEMA}.doors SET prize_icon=%s WHERE id=%s", (prize_icon, door_id))
-                if key_price is not None:
-                    cur.execute(f"UPDATE {SCHEMA}.doors SET key_price=%s WHERE id=%s", (int(key_price), door_id))
-                if rarity is not None:
-                    cur.execute(f"UPDATE {SCHEMA}.doors SET rarity=%s WHERE id=%s", (rarity, door_id))
-                if is_active is not None:
-                    cur.execute(f"UPDATE {SCHEMA}.doors SET is_active=%s WHERE id=%s", (bool(is_active), door_id))
+                for f in fields:
+                    if f in body:
+                        val = int(body[f]) if f == 'key_price' else body[f]
+                        cur.execute(f"UPDATE {SCHEMA}.doors SET {f}=%s WHERE id=%s", (val, door_id))
             conn.commit()
             return ok({'message': 'Дверь обновлена'})
 
-        # POST /doors — create door (admin)
-        if method == 'POST' and path.endswith('/doors'):
+        # create door (admin)
+        if action == 'create_door':
             user = get_user_by_token(conn, token)
             if not user or user['role'] != 'admin':
                 return err('Только для администратора', 403)
-            name = body.get('name', 'Новая дверь')
-            prize = body.get('prize', 'Приз')
-            prize_icon = body.get('prize_icon', '🎁')
-            key_price = int(body.get('key_price', 99))
-            rarity = body.get('rarity', 'common')
             with conn.cursor() as cur:
-                cur.execute(
-                    f"SELECT COALESCE(MAX(sort_order),0)+1 FROM {SCHEMA}.doors"
-                )
+                cur.execute(f"SELECT COALESCE(MAX(sort_order),0)+1 FROM {SCHEMA}.doors")
                 sort_order = cur.fetchone()[0]
                 cur.execute(
-                    f"""INSERT INTO {SCHEMA}.doors (name, prize, prize_icon, key_price, rarity, sort_order)
-                        VALUES (%s,%s,%s,%s,%s,%s) RETURNING id""",
-                    (name, prize, prize_icon, key_price, rarity, sort_order)
+                    f"INSERT INTO {SCHEMA}.doors (name,prize,prize_icon,key_price,rarity,sort_order) VALUES (%s,%s,%s,%s,%s,%s) RETURNING id",
+                    (body.get('name','Новая дверь'), body.get('prize','Приз'), body.get('prize_icon','🎁'), int(body.get('key_price',99)), body.get('rarity','common'), sort_order)
                 )
                 new_id = cur.fetchone()[0]
             conn.commit()
             return ok({'id': new_id, 'message': 'Дверь создана'})
 
-        # GET /admin/stats — admin dashboard stats
-        if method == 'GET' and path.endswith('/admin/stats'):
+        # admin stats
+        if action == 'admin_stats':
             user = get_user_by_token(conn, token)
             if not user or user['role'] != 'admin':
                 return err('Только для администратора', 403)
@@ -194,43 +167,35 @@ def handler(event: dict, context) -> dict:
                 revenue = cur.fetchone()[0]
                 cur.execute(f"SELECT COUNT(*) FROM {SCHEMA}.referral_earnings")
                 ref_count = cur.fetchone()[0]
-            return ok({
-                'users': users_count,
-                'opens': opens_count,
-                'revenue': revenue,
-                'referrals': ref_count,
-            })
+            return ok({'users': users_count, 'opens': opens_count, 'revenue': int(revenue), 'referrals': ref_count})
 
-        # GET /admin/users — all users (admin)
-        if method == 'GET' and path.endswith('/admin/users'):
+        # admin users list
+        if action == 'admin_users':
             user = get_user_by_token(conn, token)
             if not user or user['role'] != 'admin':
                 return err('Только для администратора', 403)
             with conn.cursor() as cur:
                 cur.execute(
-                    f"""SELECT id, name, email, phone, role, referral_code, referred_by,
-                               balance, keys_count, level, is_blocked, created_at
-                        FROM {SCHEMA}.users ORDER BY created_at DESC"""
+                    f"SELECT id,name,email,phone,role,referral_code,referred_by,balance,keys_count,level,is_blocked,created_at FROM {SCHEMA}.users ORDER BY created_at DESC"
                 )
                 rows = cur.fetchall()
-            keys = ['id','name','email','phone','role','referral_code','referred_by',
-                    'balance','keys_count','level','is_blocked','created_at']
+            keys = ['id','name','email','phone','role','referral_code','referred_by','balance','keys_count','level','is_blocked','created_at']
             return ok([dict(zip(keys, r)) for r in rows])
 
-        # PUT /admin/users/{id}/block — block/unblock (admin)
-        if method == 'PUT' and '/admin/users/' in path:
+        # block/unblock user (admin)
+        if action == 'block_user':
             user = get_user_by_token(conn, token)
             if not user or user['role'] != 'admin':
                 return err('Только для администратора', 403)
-            uid = path.split('/admin/users/')[-1].split('/')[0]
-            block = body.get('is_blocked', True)
+            uid = body.get('user_id')
+            is_blocked = body.get('is_blocked', True)
             with conn.cursor() as cur:
-                cur.execute(f"UPDATE {SCHEMA}.users SET is_blocked=%s WHERE id=%s", (bool(block), uid))
+                cur.execute(f"UPDATE {SCHEMA}.users SET is_blocked=%s WHERE id=%s", (bool(is_blocked), uid))
             conn.commit()
             return ok({'message': 'Обновлено'})
 
-        # GET /admin/referrals — referral network (admin)
-        if method == 'GET' and path.endswith('/admin/referrals'):
+        # admin referrals
+        if action == 'admin_referrals':
             user = get_user_by_token(conn, token)
             if not user or user['role'] != 'admin':
                 return err('Только для администратора', 403)
@@ -250,8 +215,8 @@ def handler(event: dict, context) -> dict:
             keys = ['id','name','referral_code','invited','earned']
             return ok([dict(zip(keys, r)) for r in rows])
 
-        # GET /history — user's door opens
-        if method == 'GET' and path.endswith('/history'):
+        # user history
+        if action == 'history':
             user = get_user_by_token(conn, token)
             if not user:
                 return err('Требуется авторизация', 401)
@@ -267,7 +232,7 @@ def handler(event: dict, context) -> dict:
             keys = ['id','prize_won','amount_won','created_at','door_name','prize_icon']
             return ok([dict(zip(keys, r)) for r in rows])
 
-        return err('Not found', 404)
+        return err('Неизвестное действие', 400)
 
     finally:
         conn.close()

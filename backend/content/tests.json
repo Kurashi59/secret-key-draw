@@ -5,7 +5,31 @@
       "method": "GET",
       "path": "/",
       "expectedStatus": 200,
-      "expectedBody": {"status": "string"},
+      "expectedBody": {"status": "ok"},
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Get site content",
+      "method": "GET",
+      "path": "/?action=get_site",
+      "expectedStatus": 200,
+      "expectedBody": {},
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Get contacts",
+      "method": "GET",
+      "path": "/?action=get_contacts",
+      "expectedStatus": 200,
+      "expectedBody": {},
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Get doors",
+      "method": "GET",
+      "path": "/?action=get_doors",
+      "expectedStatus": 200,
+      "expectedBody": {},
       "bodyMatcher": "partial"
     }
   ]

@@ -5,9 +5,11 @@ function getToken(): string {
   return localStorage.getItem('gd_token') || '';
 }
 
-function authHeaders() {
+function authHeaders(): Record<string, string> {
   const t = getToken();
-  return t ? { Authorization: `Bearer ${t}`, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
+  const h: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (t) h['Authorization'] = `Bearer ${t}`;
+  return h;
 }
 
 async function request(url: string, options: RequestInit = {}) {
@@ -20,45 +22,47 @@ async function request(url: string, options: RequestInit = {}) {
   return data;
 }
 
-// Auth
+const a = (action: string) => `${AUTH_URL}?action=${action}`;
+const c = (action: string) => `${CONTENT_URL}?action=${action}`;
+
 export const api = {
   auth: {
     register: (body: { name: string; email: string; password: string; referral_code?: string }) =>
-      request(`${AUTH_URL}/register`, { method: 'POST', body: JSON.stringify(body) }),
+      request(a('register'), { method: 'POST', body: JSON.stringify(body) }),
 
     login: (body: { email: string; password: string }) =>
-      request(`${AUTH_URL}/login`, { method: 'POST', body: JSON.stringify(body) }),
+      request(a('login'), { method: 'POST', body: JSON.stringify(body) }),
 
-    me: () => request(`${AUTH_URL}/me`),
+    me: () => request(a('me')),
 
-    logout: () => request(`${AUTH_URL}/logout`, { method: 'POST' }),
+    logout: () => request(a('logout'), { method: 'POST' }),
 
     updateProfile: (body: { name?: string; phone?: string }) =>
-      request(`${AUTH_URL}/me`, { method: 'PUT', body: JSON.stringify(body) }),
+      request(a('update'), { method: 'POST', body: JSON.stringify(body) }),
   },
 
   content: {
-    getSite: () => request(`${CONTENT_URL}/site`),
+    getSite: () => request(c('get_site')),
     updateSite: (updates: Record<string, string>) =>
-      request(`${CONTENT_URL}/site`, { method: 'PUT', body: JSON.stringify({ updates }) }),
+      request(c('update_site'), { method: 'POST', body: JSON.stringify({ updates }) }),
 
-    getContacts: () => request(`${CONTENT_URL}/contacts`),
+    getContacts: () => request(c('get_contacts')),
     updateContacts: (updates: Record<string, string>) =>
-      request(`${CONTENT_URL}/contacts`, { method: 'PUT', body: JSON.stringify({ updates }) }),
+      request(c('update_contacts'), { method: 'POST', body: JSON.stringify({ updates }) }),
 
-    getDoors: () => request(`${CONTENT_URL}/doors`),
-    getAllDoors: () => request(`${CONTENT_URL}/doors/all`),
+    getDoors: () => request(c('get_doors')),
+    getAllDoors: () => request(c('get_all_doors')),
     updateDoor: (id: number, body: Record<string, unknown>) =>
-      request(`${CONTENT_URL}/doors/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+      request(c('update_door'), { method: 'POST', body: JSON.stringify({ id, ...body }) }),
     createDoor: (body: Record<string, unknown>) =>
-      request(`${CONTENT_URL}/doors`, { method: 'POST', body: JSON.stringify(body) }),
+      request(c('create_door'), { method: 'POST', body: JSON.stringify(body) }),
 
-    adminStats: () => request(`${CONTENT_URL}/admin/stats`),
-    adminUsers: () => request(`${CONTENT_URL}/admin/users`),
-    adminBlockUser: (id: number, is_blocked: boolean) =>
-      request(`${CONTENT_URL}/admin/users/${id}/block`, { method: 'PUT', body: JSON.stringify({ is_blocked }) }),
-    adminReferrals: () => request(`${CONTENT_URL}/admin/referrals`),
+    adminStats: () => request(c('admin_stats')),
+    adminUsers: () => request(c('admin_users')),
+    adminBlockUser: (user_id: number, is_blocked: boolean) =>
+      request(c('block_user'), { method: 'POST', body: JSON.stringify({ user_id, is_blocked }) }),
+    adminReferrals: () => request(c('admin_referrals')),
 
-    history: () => request(`${CONTENT_URL}/history`),
+    history: () => request(c('history')),
   },
 };

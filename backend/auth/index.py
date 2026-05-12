@@ -1,6 +1,6 @@
 """
 Авторизация: регистрация, вход, выход, профиль.
-Поддерживает реферальные коды при регистрации.
+Роутинг через query param: ?action=register|login|me|logout|update
 """
 import json
 import os
@@ -36,7 +36,7 @@ def verify_password(password: str, stored: str) -> bool:
         return False
 
 def gen_referral_code(name: str) -> str:
-    base = re.sub(r'[^A-Za-zА-Яа-яЁё]', '', name).upper()[:4] or 'USER'
+    base = re.sub(r'[^A-Za-z]', '', name).upper()[:4] or 'USER'
     suffix = ''.join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(4))
     return f"{base}{suffix}"
 
@@ -78,8 +78,10 @@ def handler(event: dict, context) -> dict:
     if event.get('httpMethod') == 'OPTIONS':
         return {'statusCode': 200, 'headers': CORS, 'body': ''}
 
-    path = event.get('path', '').rstrip('/')
     method = event.get('httpMethod', 'GET')
+    qs = event.get('queryStringParameters') or {}
+    action = qs.get('action', '')
+
     body = {}
     if event.get('body'):
         try:
@@ -89,12 +91,12 @@ def handler(event: dict, context) -> dict:
 
     token = (event.get('headers') or {}).get('X-Authorization', '').replace('Bearer ', '').strip()
 
-    # GET / — health
-    if method == 'GET' and (path == '' or path.endswith('/')):
-        return ok({'status': 'ok'})
+    # Health check
+    if not action:
+        return ok({'status': 'ok', 'service': 'auth'})
 
-    # POST /register
-    if method == 'POST' and path.endswith('/register'):
+    # register
+    if action == 'register':
         name = (body.get('name') or '').strip()
         email = (body.get('email') or '').strip().lower()
         password = body.get('password', '')
@@ -123,14 +125,11 @@ def handler(event: dict, context) -> dict:
                     referrer_id = ref_row[0]
 
                 my_code = gen_referral_code(name)
-                # ensure unique
-                attempts = 0
-                while attempts < 5:
+                for _ in range(5):
                     cur.execute(f"SELECT id FROM {SCHEMA}.users WHERE referral_code = %s", (my_code,))
                     if not cur.fetchone():
                         break
                     my_code = gen_referral_code(name)
-                    attempts += 1
 
                 ph = hash_password(password)
                 cur.execute(
@@ -140,14 +139,13 @@ def handler(event: dict, context) -> dict:
                 )
                 user_id = cur.fetchone()[0]
             conn.commit()
-
             sess_token = create_session(conn, user_id)
             return ok({'token': sess_token, 'message': 'Регистрация успешна'})
         finally:
             conn.close()
 
-    # POST /login
-    if method == 'POST' and path.endswith('/login'):
+    # login
+    if action == 'login':
         email = (body.get('email') or '').strip().lower()
         password = body.get('password', '')
         if not email or not password:
@@ -168,14 +166,13 @@ def handler(event: dict, context) -> dict:
                 return err('Аккаунт заблокирован')
             if not verify_password(password, ph):
                 return err('Неверный email или пароль')
-
             sess_token = create_session(conn, user_id)
             return ok({'token': sess_token, 'message': 'Вход выполнен'})
         finally:
             conn.close()
 
-    # GET /me
-    if method == 'GET' and path.endswith('/me'):
+    # me
+    if action == 'me':
         if not token:
             return err('Требуется авторизация', 401)
         conn = get_conn()
@@ -183,7 +180,6 @@ def handler(event: dict, context) -> dict:
             user = get_user_by_token(conn, token)
             if not user:
                 return err('Токен недействителен', 401)
-            # get referral stats
             with conn.cursor() as cur:
                 cur.execute(
                     f"SELECT COUNT(*), COALESCE(SUM(amount),0) FROM {SCHEMA}.referral_earnings WHERE referrer_id = %s",
@@ -201,8 +197,8 @@ def handler(event: dict, context) -> dict:
         finally:
             conn.close()
 
-    # POST /logout
-    if method == 'POST' and path.endswith('/logout'):
+    # logout
+    if action == 'logout':
         if token:
             conn = get_conn()
             try:
@@ -213,8 +209,8 @@ def handler(event: dict, context) -> dict:
                 conn.close()
         return ok({'message': 'Выход выполнен'})
 
-    # PUT /me — update profile
-    if method == 'PUT' and path.endswith('/me'):
+    # update profile
+    if action == 'update':
         if not token:
             return err('Требуется авторизация', 401)
         conn = get_conn()
@@ -222,10 +218,8 @@ def handler(event: dict, context) -> dict:
             user = get_user_by_token(conn, token)
             if not user:
                 return err('Токен недействителен', 401)
-
             name = (body.get('name') or user['name']).strip()
             phone = (body.get('phone') or user.get('phone') or '').strip()
-
             with conn.cursor() as cur:
                 cur.execute(
                     f"UPDATE {SCHEMA}.users SET name=%s, phone=%s WHERE id=%s",
@@ -236,4 +230,4 @@ def handler(event: dict, context) -> dict:
         finally:
             conn.close()
 
-    return err('Not found', 404)
+    return err('Неизвестное действие', 400)

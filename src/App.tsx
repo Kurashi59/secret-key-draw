@@ -16,12 +16,12 @@ import AuthPage from "./pages/AuthPage";
 const queryClient = new QueryClient();
 
 const NAV_ITEMS = [
-  { id: 'home', label: 'Главная', icon: 'Home' },
-  { id: 'doors', label: 'Двери', icon: 'DoorOpen' },
-  { id: 'cabinet', label: 'Кабинет', icon: 'User' },
-  { id: 'about', label: 'О проекте', icon: 'Info' },
-  { id: 'contacts', label: 'Контакты', icon: 'MessageSquare' },
-  { id: 'admin', label: 'Админ', icon: 'Shield' },
+  { id: 'home', label: 'Главная', icon: 'Home', adminOnly: false },
+  { id: 'doors', label: 'Двери', icon: 'DoorOpen', adminOnly: false },
+  { id: 'cabinet', label: 'Кабинет', icon: 'User', adminOnly: false },
+  { id: 'about', label: 'О проекте', icon: 'Info', adminOnly: false },
+  { id: 'contacts', label: 'Контакты', icon: 'MessageSquare', adminOnly: false },
+  { id: 'admin', label: 'Админ', icon: 'Shield', adminOnly: true },
 ];
 
 function NavBar({ active, setActive }: { active: string; setActive: (id: string) => void }) {
@@ -40,7 +40,7 @@ function NavBar({ active, setActive }: { active: string; setActive: (id: string)
         </button>
 
         <div className="hidden md:flex items-center gap-6">
-          {NAV_ITEMS.map(item => (
+          {NAV_ITEMS.filter(item => !item.adminOnly || user?.role === 'admin').map(item => (
             <button key={item.id} onClick={() => setActive(item.id)}
               className={`nav-link text-sm ${active === item.id ? 'active' : ''}`}>
               {item.label}
@@ -76,7 +76,7 @@ function NavBar({ active, setActive }: { active: string; setActive: (id: string)
       {menuOpen && (
         <div className="md:hidden mt-2 max-w-5xl mx-auto rounded-2xl overflow-hidden"
           style={{ background: 'rgba(7,9,15,0.97)', backdropFilter: 'blur(20px)', border: '1px solid rgba(251,191,36,0.12)' }}>
-          {NAV_ITEMS.map(item => (
+          {NAV_ITEMS.filter(item => !item.adminOnly || user?.role === 'admin').map(item => (
             <button key={item.id} onClick={() => { setActive(item.id); setMenuOpen(false); }}
               className={`w-full flex items-center gap-3 px-6 py-4 text-left transition-colors border-b border-white/5 last:border-0 ${
                 active === item.id ? 'text-gold-400 bg-gold-500/5' : 'text-white/60 hover:text-white/90'
