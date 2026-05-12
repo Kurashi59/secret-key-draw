@@ -1,0 +1,81 @@
+import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { api } from './api';
+
+export interface User {
+  id: number;
+  name: string;
+  email: string;
+  phone?: string;
+  role: 'user' | 'admin';
+  referral_code: string;
+  referred_by?: number;
+  balance: number;
+  keys_count: number;
+  level: string;
+  level_progress: number;
+  is_blocked: boolean;
+  referral_earned: number;
+  referral_invited: number;
+}
+
+interface AuthContextType {
+  user: User | null;
+  loading: boolean;
+  login: (email: string, password: string) => Promise<void>;
+  register: (name: string, email: string, password: string, referralCode?: string) => Promise<void>;
+  logout: () => Promise<void>;
+  refreshUser: () => Promise<void>;
+}
+
+const AuthContext = createContext<AuthContextType | null>(null);
+
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const refreshUser = async () => {
+    const token = localStorage.getItem('gd_token');
+    if (!token) { setLoading(false); return; }
+    try {
+      const data = await api.auth.me();
+      setUser(data);
+    } catch {
+      localStorage.removeItem('gd_token');
+      setUser(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { refreshUser(); }, []);
+
+  const login = async (email: string, password: string) => {
+    const data = await api.auth.login({ email, password });
+    localStorage.setItem('gd_token', data.token);
+    await refreshUser();
+  };
+
+  const register = async (name: string, email: string, password: string, referralCode?: string) => {
+    const data = await api.auth.register({ name, email, password, referral_code: referralCode });
+    localStorage.setItem('gd_token', data.token);
+    await refreshUser();
+  };
+
+  const logout = async () => {
+    await api.auth.logout().catch(() => {});
+    localStorage.removeItem('gd_token');
+    setUser(null);
+  };
+
+  return (
+    <AuthContext.Provider value={{ user, loading, login, register, logout, refreshUser }}>
+      {children}
+    </AuthContext.Provider>
+  );
+}
+
+export function useAuth() {
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error('useAuth must be used inside AuthProvider');
+  return ctx;
+}
