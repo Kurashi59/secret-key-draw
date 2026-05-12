@@ -1,4 +1,5 @@
 {
+  "create_admin": "https://functions.poehali.dev/ef26c8f8-1404-4e87-bff8-411256ebc2b8",
   "setup": "https://functions.poehali.dev/bdf1e191-63fa-405a-87bd-33a426ac2763",
   "auth": "https://functions.poehali.dev/7a0bfbbe-e6dc-439b-8068-9b9b23998b5a",
   "content": "https://functions.poehali.dev/9f14e54c-c915-4e37-94ac-1d7812c3c407"
