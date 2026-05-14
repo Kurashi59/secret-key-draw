@@ -1,6 +1,6 @@
 """
 Авторизация: регистрация с ФИО/дата рождения/телефон, вход, выход, профиль.
-Роутинг: ?action=register|login|me|logout|update|admin_set_role|admin_deposit
+Роутинг: ?action=register|login|me|logout|update|admin_set_role|admin_deposit|admin_delete_user
 """
 import json
 import os

@@ -20,15 +20,25 @@ export class ApiError extends Error {
   }
 }
 
-async function request(url: string, options: RequestInit = {}) {
-  const res = await fetch(url, {
-    ...options,
-    headers: { ...authHeaders(), ...(options.headers || {}) },
-  });
-  let data: Record<string, unknown> = {};
-  try { data = await res.json(); } catch { /* ignore */ }
-  if (!res.ok) throw new ApiError((data.error as string) || 'Ошибка запроса', res.status);
-  return data;
+async function request(url: string, options: RequestInit = {}, retries = 2): Promise<Record<string, unknown>> {
+  try {
+    const res = await fetch(url, {
+      ...options,
+      headers: { ...authHeaders(), ...(options.headers || {}) },
+    });
+    let data: Record<string, unknown> = {};
+    try { data = await res.json(); } catch { /* ignore */ }
+    if (!res.ok) throw new ApiError((data.error as string) || 'Ошибка запроса', res.status);
+    return data;
+  } catch (e) {
+    if (e instanceof ApiError) throw e;
+    // Сетевая ошибка — повторяем попытку
+    if (retries > 0) {
+      await new Promise(r => setTimeout(r, 800));
+      return request(url, options, retries - 1);
+    }
+    throw new ApiError('Не удалось подключиться к серверу. Проверьте интернет.', 0);
+  }
 }
 
 const a = (action: string) => `${AUTH_URL}?action=${action}`;
@@ -70,6 +80,8 @@ export const api = {
     getPaymentSettings: () => request(c('get_payment_settings')),
     updatePaymentSettings: (updates: Record<string, string>) =>
       request(c('update_payment_settings'), { method: 'POST', body: JSON.stringify({ updates }) }),
+    uploadQr: (image_data: string) =>
+      request(c('upload_qr'), { method: 'POST', body: JSON.stringify({ image_data }) }),
 
     getDoors: () => request(c('get_doors')),
     getAllDoors: () => request(c('get_all_doors')),

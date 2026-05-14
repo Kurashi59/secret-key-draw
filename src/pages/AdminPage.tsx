@@ -236,6 +236,7 @@ export default function AdminPage({ onGoAuth }: { onGoAuth: () => void }) {
 
   const [paymentSettings, setPaymentSettings] = useState<Record<string, { value: string; label: string }>>({});
   const [qrUrl, setQrUrl] = useState('');
+  const [qrPendingBase64, setQrPendingBase64] = useState('');
   const [paymentSaving, setPaymentSaving] = useState(false);
   const [paymentMsg, setPaymentMsg] = useState('');
 
@@ -349,8 +350,19 @@ export default function AdminPage({ onGoAuth }: { onGoAuth: () => void }) {
   const savePayment = async () => {
     setPaymentSaving(true); setPaymentMsg('');
     try {
-      await api.content.updatePaymentSettings({ qr_image_url: qrUrl });
-      setPaymentMsg('Сохранено!');
+      if (qrPendingBase64) {
+        // Загружаем файл через S3
+        const res = await api.content.uploadQr(qrPendingBase64);
+        const uploaded = res as { url?: string };
+        if (uploaded.url) {
+          setQrUrl(uploaded.url);
+          setQrPendingBase64('');
+        }
+      } else if (qrUrl && !qrUrl.startsWith('data:')) {
+        // Просто сохраняем URL
+        await api.content.updatePaymentSettings({ qr_image_url: qrUrl });
+      }
+      setPaymentMsg('QR-код сохранён!');
     } catch (e: unknown) { setPaymentMsg(e instanceof Error ? e.message : 'Ошибка'); }
     finally { setPaymentSaving(false); }
   };
@@ -359,7 +371,11 @@ export default function AdminPage({ onGoAuth }: { onGoAuth: () => void }) {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = ev => setQrUrl(ev.target?.result as string);
+    reader.onload = ev => {
+      const dataUrl = ev.target?.result as string;
+      setQrUrl(dataUrl); // показываем превью
+      setQrPendingBase64(dataUrl); // запоминаем для загрузки
+    };
     reader.readAsDataURL(file);
   };
 
