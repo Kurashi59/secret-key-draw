@@ -10,7 +10,15 @@ interface AuthPageProps {
 export default function AuthPage({ onSuccess, initialRef = '' }: AuthPageProps) {
   const { login, register } = useAuth();
   const [mode, setMode] = useState<'login' | 'register'>('login');
-  const [form, setForm] = useState({ name: '', email: '', password: '', referral_code: initialRef });
+  const [form, setForm] = useState({
+    name: '',
+    full_name: '',
+    email: '',
+    phone: '',
+    birth_date: '',
+    password: '',
+    referral_code: initialRef,
+  });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -28,7 +36,15 @@ export default function AuthPage({ onSuccess, initialRef = '' }: AuthPageProps) 
       if (mode === 'login') {
         await login(form.email, form.password);
       } else {
-        await register(form.name, form.email, form.password, form.referral_code || undefined);
+        await register({
+          name: form.name,
+          full_name: form.full_name || form.name,
+          email: form.email,
+          phone: form.phone,
+          birth_date: form.birth_date,
+          password: form.password,
+          referral_code: form.referral_code || undefined,
+        });
       }
       onSuccess();
     } catch (e: unknown) {
@@ -38,14 +54,14 @@ export default function AuthPage({ onSuccess, initialRef = '' }: AuthPageProps) 
     }
   };
 
+  const inputCls = 'w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white font-rubik text-sm focus:outline-none focus:border-gold-500/50 transition-colors placeholder-white/20';
+
   return (
-    <div className="min-h-screen grid-bg flex items-center justify-center px-4 pt-20">
-      {/* Glow */}
+    <div className="min-h-screen grid-bg flex items-center justify-center px-4 pt-20 pb-10">
       <div className="pointer-events-none fixed inset-0"
         style={{ background: 'radial-gradient(ellipse 50% 40% at 50% 45%, rgba(251,191,36,0.07) 0%, transparent 70%)' }} />
 
       <div className="relative w-full max-w-md fade-up-1">
-        {/* Logo */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center gap-2 mb-4">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-gold-600 to-gold-400 flex items-center justify-center">
@@ -61,19 +77,14 @@ export default function AuthPage({ onSuccess, initialRef = '' }: AuthPageProps) 
           </p>
         </div>
 
-        {/* Card */}
         <div className="animated-border rounded-2xl" style={{ background: 'linear-gradient(135deg, #0d1117, #111827)' }}>
           <div className="p-8">
-            {/* Tab switch */}
             <div className="flex gap-1 bg-white/5 rounded-xl p-1 mb-6 border border-white/10">
               {(['login', 'register'] as const).map(m => (
-                <button
-                  key={m}
-                  onClick={() => { setMode(m); setError(''); }}
+                <button key={m} onClick={() => { setMode(m); setError(''); }}
                   className={`flex-1 py-2 rounded-lg font-oswald text-xs tracking-wider uppercase transition-all ${
                     mode === m ? 'bg-gradient-to-r from-gold-700 to-gold-500 text-black shadow-lg' : 'text-white/40 hover:text-white/70'
-                  }`}
-                >
+                  }`}>
                   {m === 'login' ? 'Вход' : 'Регистрация'}
                 </button>
               ))}
@@ -81,60 +92,53 @@ export default function AuthPage({ onSuccess, initialRef = '' }: AuthPageProps) 
 
             <form onSubmit={handleSubmit} className="space-y-4">
               {mode === 'register' && (
-                <div>
-                  <label className="block text-xs text-white/40 font-rubik uppercase tracking-wider mb-2">Имя</label>
-                  <input
-                    value={form.name}
-                    onChange={e => set('name', e.target.value)}
-                    placeholder="Александр"
-                    required
-                    className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white font-rubik text-sm focus:outline-none focus:border-gold-500/50 transition-colors placeholder-white/20"
-                  />
-                </div>
+                <>
+                  <div>
+                    <label className="block text-xs text-white/40 font-rubik uppercase tracking-wider mb-2">Имя (отображаемое)</label>
+                    <input value={form.name} onChange={e => set('name', e.target.value)}
+                      placeholder="Александр" required className={inputCls} />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-white/40 font-rubik uppercase tracking-wider mb-2">ФИО полностью</label>
+                    <input value={form.full_name} onChange={e => set('full_name', e.target.value)}
+                      placeholder="Иванов Александр Петрович" className={inputCls} />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-white/40 font-rubik uppercase tracking-wider mb-2">Телефон <span className="text-red-400">*</span></label>
+                    <input type="tel" value={form.phone} onChange={e => set('phone', e.target.value)}
+                      placeholder="+7 900 000-00-00" required className={inputCls} />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-white/40 font-rubik uppercase tracking-wider mb-2">Дата рождения <span className="text-red-400">*</span></label>
+                    <input type="date" value={form.birth_date} onChange={e => set('birth_date', e.target.value)}
+                      required className={inputCls} />
+                  </div>
+                </>
               )}
 
               <div>
                 <label className="block text-xs text-white/40 font-rubik uppercase tracking-wider mb-2">Email</label>
-                <input
-                  type="email"
-                  value={form.email}
-                  onChange={e => set('email', e.target.value)}
-                  placeholder="alex@mail.ru"
-                  required
-                  className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white font-rubik text-sm focus:outline-none focus:border-gold-500/50 transition-colors placeholder-white/20"
-                />
+                <input type="email" value={form.email} onChange={e => set('email', e.target.value)}
+                  placeholder="alex@mail.ru" required className={inputCls} />
               </div>
 
               <div>
                 <label className="block text-xs text-white/40 font-rubik uppercase tracking-wider mb-2">Пароль</label>
-                <input
-                  type="password"
-                  value={form.password}
-                  onChange={e => set('password', e.target.value)}
-                  placeholder="••••••••"
-                  required
-                  className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white font-rubik text-sm focus:outline-none focus:border-gold-500/50 transition-colors placeholder-white/20"
-                />
+                <input type="password" value={form.password} onChange={e => set('password', e.target.value)}
+                  placeholder="••••••••" required className={inputCls} />
               </div>
 
               {mode === 'register' && (
                 <div>
                   <label className="block text-xs text-white/40 font-rubik uppercase tracking-wider mb-2">
-                    Реферальный код <span className="text-gold-600/70">(обязателен)</span>
+                    Реферальный код <span className="text-white/30">(необязательно)</span>
                   </label>
                   <div className="relative">
-                    <input
-                      value={form.referral_code}
-                      onChange={e => set('referral_code', e.target.value.toUpperCase())}
+                    <input value={form.referral_code} onChange={e => set('referral_code', e.target.value.toUpperCase())}
                       placeholder="ALEX1234"
-                      required
-                      className="w-full bg-black/40 border border-gold-500/20 rounded-xl px-4 py-3 text-gold-300 font-oswald tracking-widest text-sm focus:outline-none focus:border-gold-500/50 transition-colors placeholder-gold-800/60"
-                    />
+                      className="w-full bg-black/40 border border-gold-500/20 rounded-xl px-4 py-3 text-gold-300 font-oswald tracking-widest text-sm focus:outline-none focus:border-gold-500/50 transition-colors placeholder-gold-800/60" />
                     <Icon name="Key" size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-gold-600/50" />
                   </div>
-                  <p className="text-xs text-white/30 mt-1.5 font-rubik">
-                    Попросите реферальный код у пригласившего вас участника
-                  </p>
                 </div>
               )}
 
@@ -145,11 +149,8 @@ export default function AuthPage({ onSuccess, initialRef = '' }: AuthPageProps) 
                 </div>
               )}
 
-              <button
-                type="submit"
-                disabled={loading}
-                className="btn-gold w-full py-4 rounded-xl text-sm mt-2 disabled:opacity-60 disabled:cursor-not-allowed"
-              >
+              <button type="submit" disabled={loading}
+                className="btn-gold w-full py-4 rounded-xl text-sm mt-2 disabled:opacity-60 disabled:cursor-not-allowed">
                 {loading ? '⏳ Загрузка...' : mode === 'login' ? 'Войти' : 'Создать аккаунт'}
               </button>
             </form>

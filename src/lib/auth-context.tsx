@@ -4,25 +4,41 @@ import { api } from './api';
 export interface User {
   id: number;
   name: string;
+  full_name?: string;
   email: string;
   phone?: string;
+  birth_date?: string;
   role: 'user' | 'admin';
   referral_code: string;
   referred_by?: number;
+  external_balance: number;
+  referral_balance: number;
   balance: number;
   keys_count: number;
+  keys_available: number;
   level: string;
   level_progress: number;
   is_blocked: boolean;
+  is_main_admin: boolean;
   referral_earned: number;
   referral_invited: number;
+}
+
+export interface RegisterData {
+  name: string;
+  full_name?: string;
+  email: string;
+  phone: string;
+  birth_date: string;
+  password: string;
+  referral_code?: string;
 }
 
 interface AuthContextType {
   user: User | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  register: (name: string, email: string, password: string, referralCode?: string) => Promise<void>;
+  register: (data: RegisterData) => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
 }
@@ -55,9 +71,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await refreshUser();
   };
 
-  const register = async (name: string, email: string, password: string, referralCode?: string) => {
-    const data = await api.auth.register({ name, email, password, referral_code: referralCode });
-    localStorage.setItem('gd_token', data.token);
+  const register = async (data: RegisterData) => {
+    const resp = await api.auth.register(data);
+    localStorage.setItem('gd_token', resp.token);
     await refreshUser();
   };
 

@@ -27,18 +27,23 @@ const c = (action: string) => `${CONTENT_URL}?action=${action}`;
 
 export const api = {
   auth: {
-    register: (body: { name: string; email: string; password: string; referral_code?: string }) =>
+    register: (body: { name: string; full_name?: string; email: string; phone: string; birth_date: string; password: string; referral_code?: string }) =>
       request(a('register'), { method: 'POST', body: JSON.stringify(body) }),
 
     login: (body: { email: string; password: string }) =>
       request(a('login'), { method: 'POST', body: JSON.stringify(body) }),
 
     me: () => request(a('me')),
-
     logout: () => request(a('logout'), { method: 'POST' }),
 
-    updateProfile: (body: { name?: string; phone?: string }) =>
+    updateProfile: (body: { name?: string; full_name?: string; phone?: string; birth_date?: string }) =>
       request(a('update'), { method: 'POST', body: JSON.stringify(body) }),
+
+    adminSetRole: (user_id: number, role: 'user' | 'admin') =>
+      request(a('admin_set_role'), { method: 'POST', body: JSON.stringify({ user_id, role }) }),
+
+    adminDeposit: (user_id: number, amount: number, balance_type: 'external' | 'referral', description?: string) =>
+      request(a('admin_deposit'), { method: 'POST', body: JSON.stringify({ user_id, amount, balance_type, description }) }),
   },
 
   content: {
@@ -57,12 +62,40 @@ export const api = {
     createDoor: (body: Record<string, unknown>) =>
       request(c('create_door'), { method: 'POST', body: JSON.stringify(body) }),
 
+    // Prizes
+    getPrizes: (door_id: number) => request(c('get_prizes') + `&door_id=${door_id}`),
+    addPrize: (door_id: number, name: string, description?: string) =>
+      request(c('add_prize'), { method: 'POST', body: JSON.stringify({ door_id, name, description }) }),
+    updatePrize: (prize_id: number, name?: string, description?: string) =>
+      request(c('update_prize'), { method: 'POST', body: JSON.stringify({ prize_id, name, description }) }),
+    deletePrize: (prize_id: number) =>
+      request(c('delete_prize'), { method: 'POST', body: JSON.stringify({ prize_id }) }),
+
+    // Keys
+    getMyKeys: () => request(c('get_my_keys')),
+    buyKey: (door_id: number) =>
+      request(c('buy_key'), { method: 'POST', body: JSON.stringify({ door_id }) }),
+
+    // Door open
+    openDoor: (door_id: number, key_id: number) =>
+      request(c('open_door'), { method: 'POST', body: JSON.stringify({ door_id, key_id }) }),
+
+    // Transactions
+    getTransactions: () => request(c('get_transactions')),
+    history: () => request(c('history')),
+
+    // Deposit
+    requestDeposit: (amount: number) =>
+      request(c('request_deposit'), { method: 'POST', body: JSON.stringify({ amount }) }),
+
+    // Admin
     adminStats: () => request(c('admin_stats')),
     adminUsers: () => request(c('admin_users')),
     adminBlockUser: (user_id: number, is_blocked: boolean) =>
       request(c('block_user'), { method: 'POST', body: JSON.stringify({ user_id, is_blocked }) }),
     adminReferrals: () => request(c('admin_referrals')),
-
-    history: () => request(c('history')),
+    adminDeposits: () => request(c('admin_deposits')),
+    adminConfirmDeposit: (request_id: number) =>
+      request(c('admin_confirm_deposit'), { method: 'POST', body: JSON.stringify({ request_id }) }),
   },
 };

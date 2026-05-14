@@ -24,6 +24,15 @@
       "expectedStatus": 401,
       "expectedBody": {"error": "string"},
       "bodyMatcher": "partial"
+    },
+    {
+      "name": "Register - missing fields",
+      "method": "POST",
+      "path": "/?action=register",
+      "body": {"email": "test@test.com"},
+      "expectedStatus": 400,
+      "expectedBody": {"error": "string"},
+      "bodyMatcher": "partial"
     }
   ]
 }
