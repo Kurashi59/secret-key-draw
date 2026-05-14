@@ -56,12 +56,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const data = await api.auth.me();
       setUser(data as unknown as User);
     } catch (e) {
-      // Удаляем токен только при явном 401 (невалидный токен)
-      if (e instanceof ApiError && e.status === 401) {
-        localStorage.removeItem('gd_token');
-        setUser(null);
+      if (e instanceof ApiError) {
+        if (e.status === 401) {
+          // Невалидный токен — разлогиниваем
+          localStorage.removeItem('gd_token');
+          setUser(null);
+        }
+        // При 0 (сеть), 500, 502 — оставляем пользователя залогиненным
+        // Токен сохраняем, попробует снова при следующем действии
       }
-      // При 502/500 — оставляем токен, пусть пользователь остаётся залогиненным
     } finally {
       setLoading(false);
     }

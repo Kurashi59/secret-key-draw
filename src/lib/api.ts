@@ -20,25 +20,45 @@ export class ApiError extends Error {
   }
 }
 
-async function request(url: string, options: RequestInit = {}, retries = 2): Promise<Record<string, unknown>> {
+async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const res = await fetch(url, {
-      ...options,
-      headers: { ...authHeaders(), ...(options.headers || {}) },
-    });
-    let data: Record<string, unknown> = {};
-    try { data = await res.json(); } catch { /* ignore */ }
-    if (!res.ok) throw new ApiError((data.error as string) || 'Ошибка запроса', res.status);
-    return data;
+    const res = await fetch(url, { ...options, signal: controller.signal });
+    clearTimeout(timer);
+    return res;
   } catch (e) {
-    if (e instanceof ApiError) throw e;
-    // Сетевая ошибка — повторяем попытку
-    if (retries > 0) {
-      await new Promise(r => setTimeout(r, 800));
-      return request(url, options, retries - 1);
-    }
-    throw new ApiError('Не удалось подключиться к серверу. Проверьте интернет.', 0);
+    clearTimeout(timer);
+    throw e;
   }
+}
+
+async function request(url: string, options: RequestInit = {}, retries = 5): Promise<Record<string, unknown>> {
+  const reqOptions = {
+    ...options,
+    headers: { ...authHeaders(), ...(options.headers || {}) },
+  };
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      // Таймаут 12 секунд — достаточно для холодного старта
+      const res = await fetchWithTimeout(url, reqOptions, 12000);
+      let data: Record<string, unknown> = {};
+      try { data = await res.json(); } catch { /* ignore */ }
+      if (!res.ok) throw new ApiError((data.error as string) || 'Ошибка запроса', res.status);
+      return data;
+    } catch (e) {
+      if (e instanceof ApiError) throw e;
+      // Сетевая ошибка или таймаут — повторяем с нарастающей паузой
+      if (attempt < retries) {
+        const delay = Math.min(1000 * (attempt + 1), 3000);
+        await new Promise(r => setTimeout(r, delay));
+        continue;
+      }
+      // Все попытки исчерпаны
+      throw new ApiError('Сервер не отвечает. Попробуйте ещё раз через несколько секунд.', 0);
+    }
+  }
+  throw new ApiError('Сервер не отвечает. Попробуйте ещё раз.', 0);
 }
 
 const a = (action: string) => `${AUTH_URL}?action=${action}`;
@@ -92,7 +112,6 @@ export const api = {
     deleteDoor: (door_id: number) =>
       request(c('delete_door'), { method: 'POST', body: JSON.stringify({ door_id }) }),
 
-    // Prizes
     getPrizes: (door_id: number) => request(c('get_prizes') + `&door_id=${door_id}`),
     addPrize: (door_id: number, name: string, quantity: number, description?: string) =>
       request(c('add_prize'), { method: 'POST', body: JSON.stringify({ door_id, name, quantity, description }) }),
@@ -101,31 +120,25 @@ export const api = {
     deletePrize: (prize_id: number) =>
       request(c('delete_prize'), { method: 'POST', body: JSON.stringify({ prize_id }) }),
 
-    // Prize frequency
     getPrizeFrequency: (door_id: number) => request(c('get_prize_frequency') + `&door_id=${door_id}`),
     addPrizeFrequency: (door_id: number, every_n: number, prize_amount: number, description: string) =>
       request(c('add_prize_frequency'), { method: 'POST', body: JSON.stringify({ door_id, every_n, prize_amount, description }) }),
     deletePrizeFrequency: (freq_id: number) =>
       request(c('delete_prize_frequency'), { method: 'POST', body: JSON.stringify({ freq_id }) }),
 
-    // Keys
     getMyKeys: () => request(c('get_my_keys')),
     buyKey: (door_id: number) =>
       request(c('buy_key'), { method: 'POST', body: JSON.stringify({ door_id }) }),
 
-    // Door open
     openDoor: (door_id: number, key_id: number) =>
       request(c('open_door'), { method: 'POST', body: JSON.stringify({ door_id, key_id }) }),
 
-    // Transactions
     getTransactions: () => request(c('get_transactions')),
     history: () => request(c('history')),
 
-    // Deposit
     requestDeposit: (amount: number, comment?: string) =>
       request(c('request_deposit'), { method: 'POST', body: JSON.stringify({ amount, comment }) }),
 
-    // Admin
     adminStats: () => request(c('admin_stats')),
     adminUsers: () => request(c('admin_users')),
     adminBlockUser: (user_id: number, is_blocked: boolean) =>
