@@ -4,6 +4,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider, useAuth } from "@/lib/auth-context";
+import { api } from "@/lib/api";
 import Icon from "@/components/ui/icon";
 import HomePage from "./pages/HomePage";
 import DoorsPage from "./pages/DoorsPage";
@@ -27,6 +28,13 @@ const NAV_ITEMS = [
 function NavBar({ active, setActive }: { active: string; setActive: (id: string) => void }) {
   const { user, logout } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [siteName, setSiteName] = useState('Golden Door');
+
+  useEffect(() => {
+    api.content.getSite().then((c: Record<string, { value: string }>) => {
+      if (c?.site_name?.value) setSiteName(c.site_name.value);
+    }).catch(() => {});
+  }, []);
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 px-4 py-4">
@@ -36,7 +44,7 @@ function NavBar({ active, setActive }: { active: string; setActive: (id: string)
           <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-gold-600 to-gold-400 flex items-center justify-center">
             <span className="text-black text-xs font-bold">GD</span>
           </div>
-          <span className="font-oswald text-base tracking-widest text-white/90 uppercase group-hover:text-gold-400 transition-colors">Golden Door</span>
+          <span className="font-oswald text-base tracking-widest text-white/90 uppercase group-hover:text-gold-400 transition-colors">{siteName}</span>
         </button>
 
         <div className="hidden md:flex items-center gap-6">

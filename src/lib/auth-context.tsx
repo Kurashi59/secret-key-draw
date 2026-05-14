@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { api } from './api';
+import { api, ApiError } from './api';
 
 export interface User {
   id: number;
@@ -54,10 +54,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!token) { setLoading(false); return; }
     try {
       const data = await api.auth.me();
-      setUser(data);
-    } catch {
-      localStorage.removeItem('gd_token');
-      setUser(null);
+      setUser(data as unknown as User);
+    } catch (e) {
+      // Удаляем токен только при явном 401 (невалидный токен)
+      if (e instanceof ApiError && e.status === 401) {
+        localStorage.removeItem('gd_token');
+        setUser(null);
+      }
+      // При 502/500 — оставляем токен, пусть пользователь остаётся залогиненным
     } finally {
       setLoading(false);
     }
@@ -67,13 +71,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (email: string, password: string) => {
     const data = await api.auth.login({ email, password });
-    localStorage.setItem('gd_token', data.token);
+    localStorage.setItem('gd_token', data.token as string);
     await refreshUser();
   };
 
   const register = async (data: RegisterData) => {
     const resp = await api.auth.register(data);
-    localStorage.setItem('gd_token', resp.token);
+    localStorage.setItem('gd_token', resp.token as string);
     await refreshUser();
   };
 

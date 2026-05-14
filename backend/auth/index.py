@@ -13,6 +13,7 @@ import psycopg2
 from datetime import datetime, timedelta, timezone
 
 S = os.environ.get('MAIN_DB_SCHEMA', 't_p87395805_secret_key_draw')
+_VERSION = '2'
 CORS = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
@@ -20,7 +21,9 @@ CORS = {
 }
 
 def get_conn():
-    return psycopg2.connect(os.environ['DATABASE_URL'])
+    conn = psycopg2.connect(os.environ['DATABASE_URL'])
+    conn.autocommit = False
+    return conn
 
 def hash_password(password: str) -> str:
     salt = secrets.token_hex(16)
@@ -177,13 +180,19 @@ def handler(event: dict, context) -> dict:
             user = get_user_by_token(conn, token)
             if not user:
                 return err('Токен недействителен', 401)
-            with conn.cursor() as cur:
-                cur.execute(f"SELECT COUNT(*), COALESCE(SUM(amount),0) FROM {S}.referral_earnings WHERE referrer_id = %s", (user['id'],))
-                ref_row = cur.fetchone()
-                cur.execute(f"SELECT COUNT(*) FROM {S}.users WHERE referred_by = %s", (user['id'],))
-                invited_count = cur.fetchone()[0]
-                cur.execute(f"SELECT COUNT(*) FROM {S}.user_keys WHERE user_id=%s AND is_used=FALSE", (user['id'],))
-                keys_available = cur.fetchone()[0]
+            ref_row = (0, 0)
+            invited_count = 0
+            keys_available = 0
+            try:
+                with conn.cursor() as cur:
+                    cur.execute(f"SELECT COUNT(*), COALESCE(SUM(amount),0) FROM {S}.referral_earnings WHERE referrer_id = %s", (user['id'],))
+                    ref_row = cur.fetchone()
+                    cur.execute(f"SELECT COUNT(*) FROM {S}.users WHERE referred_by = %s", (user['id'],))
+                    invited_count = cur.fetchone()[0]
+                    cur.execute(f"SELECT COUNT(*) FROM {S}.user_keys WHERE user_id=%s AND is_used=FALSE", (user['id'],))
+                    keys_available = cur.fetchone()[0]
+            except Exception:
+                conn.rollback()
             user['referral_earned'] = int(ref_row[1])
             user['referral_invited'] = invited_count
             user['keys_available'] = keys_available

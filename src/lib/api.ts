@@ -12,13 +12,22 @@ function authHeaders(): Record<string, string> {
   return h;
 }
 
+export class ApiError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+  }
+}
+
 async function request(url: string, options: RequestInit = {}) {
   const res = await fetch(url, {
     ...options,
     headers: { ...authHeaders(), ...(options.headers || {}) },
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Ошибка запроса');
+  let data: Record<string, unknown> = {};
+  try { data = await res.json(); } catch { /* ignore */ }
+  if (!res.ok) throw new ApiError((data.error as string) || 'Ошибка запроса', res.status);
   return data;
 }
 
