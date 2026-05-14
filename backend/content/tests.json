@@ -31,6 +31,23 @@
       "expectedStatus": 200,
       "expectedBody": {},
       "bodyMatcher": "partial"
+    },
+    {
+      "name": "Get payment settings",
+      "method": "GET",
+      "path": "/?action=get_payment_settings",
+      "expectedStatus": 200,
+      "expectedBody": {},
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Admin confirm deposit - no auth",
+      "method": "POST",
+      "path": "/?action=admin_confirm_deposit",
+      "body": {"request_id": 1},
+      "expectedStatus": 403,
+      "expectedBody": {"error": "Только для администратора"},
+      "bodyMatcher": "partial"
     }
   ]
 }

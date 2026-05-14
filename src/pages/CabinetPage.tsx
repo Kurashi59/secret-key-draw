@@ -61,8 +61,11 @@ export default function CabinetPage({ onGoAuth }: { onGoAuth: () => void }) {
   const [saveLoading, setSaveLoading] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
   const [depositAmount, setDepositAmount] = useState('');
+  const [depositComment, setDepositComment] = useState('');
   const [depositMsg, setDepositMsg] = useState('');
   const [depositLoading, setDepositLoading] = useState(false);
+  const [qrUrl, setQrUrl] = useState('');
+  const [showQr, setShowQr] = useState(false);
 
   useEffect(() => {
     if (user) setProfileForm({
@@ -72,6 +75,13 @@ export default function CabinetPage({ onGoAuth }: { onGoAuth: () => void }) {
       birth_date: user.birth_date || '',
     });
   }, [user]);
+
+  useEffect(() => {
+    api.content.getPaymentSettings().then((ps) => {
+      const settings = ps as Record<string, { value: string }>;
+      setQrUrl(settings?.qr_image_url?.value || '');
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (!user) return;
@@ -128,9 +138,9 @@ export default function CabinetPage({ onGoAuth }: { onGoAuth: () => void }) {
     setDepositLoading(true);
     setDepositMsg('');
     try {
-      const res = await api.content.requestDeposit(amount);
-      setDepositMsg(res.message || 'Заявка отправлена');
-      setDepositAmount('');
+      const res = await api.content.requestDeposit(amount, depositComment);
+      setDepositMsg((res as { message?: string }).message || 'Заявка отправлена');
+      setDepositAmount(''); setDepositComment('');
     } catch (e: unknown) {
       setDepositMsg(e instanceof Error ? e.message : 'Ошибка');
     } finally {
@@ -332,17 +342,36 @@ export default function CabinetPage({ onGoAuth }: { onGoAuth: () => void }) {
               <div className="card-glow rounded-xl p-5">
                 <div className="text-xs text-white/40 uppercase tracking-wider font-rubik mb-2">Внешний счёт (с карты)</div>
                 <div className="font-oswald text-3xl text-gold-400 font-bold mb-4">{(user.external_balance || 0).toLocaleString()} ₽</div>
-                <div className="flex gap-2">
-                  <input type="number" value={depositAmount} onChange={e => setDepositAmount(e.target.value)}
-                    placeholder="Сумма (мин. 100 ₽)" min={100}
-                    className="flex-1 bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-white text-sm font-rubik focus:outline-none focus:border-gold-500/50 transition-colors placeholder-white/20" />
-                  <button onClick={requestDeposit} disabled={depositLoading}
-                    className="btn-gold px-4 py-2 rounded-xl text-xs disabled:opacity-60">
-                    {depositLoading ? '...' : 'Пополнить'}
-                  </button>
+                <div className="space-y-2">
+                  <div className="flex gap-2">
+                    <input type="number" value={depositAmount} onChange={e => setDepositAmount(e.target.value)}
+                      placeholder="Сумма (мин. 100 ₽)" min={100}
+                      className="flex-1 bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-white text-sm font-rubik focus:outline-none focus:border-gold-500/50 transition-colors placeholder-white/20" />
+                    <button onClick={requestDeposit} disabled={depositLoading}
+                      className="btn-gold px-4 py-2 rounded-xl text-xs disabled:opacity-60">
+                      {depositLoading ? '...' : 'Отправить заявку'}
+                    </button>
+                  </div>
+                  <input value={depositComment} onChange={e => setDepositComment(e.target.value)}
+                    placeholder="Комментарий (необязательно)" 
+                    className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-white text-sm font-rubik focus:outline-none focus:border-gold-500/50 transition-colors placeholder-white/20" />
                 </div>
                 {depositMsg && <p className="text-xs mt-2 font-rubik" style={{ color: depositMsg.includes('Заявка') ? '#4ade80' : '#f87171' }}>{depositMsg}</p>}
-                <p className="text-xs text-white/20 mt-2 font-rubik">Заявка отправляется администратору для зачисления</p>
+                {qrUrl && (
+                  <div className="mt-3">
+                    <button onClick={() => setShowQr(!showQr)} className="flex items-center gap-2 text-xs text-gold-400 font-rubik hover:text-gold-300 transition-colors">
+                      <Icon name="QrCode" size={14} />
+                      {showQr ? 'Скрыть QR-код для оплаты' : 'Показать QR-код для оплаты'}
+                    </button>
+                    {showQr && (
+                      <div className="mt-3 flex flex-col items-center gap-2 p-4 bg-white rounded-xl w-fit">
+                        <img src={qrUrl} alt="QR-код для оплаты" className="w-48 h-48 object-contain" />
+                        <p className="text-black text-xs font-rubik text-center">Сканируйте для оплаты</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+                <p className="text-xs text-white/20 mt-2 font-rubik">После оплаты отправьте заявку — администратор зачислит средства на счёт</p>
               </div>
               <div className="card-glow rounded-xl p-5" style={{ borderColor: 'rgba(74,222,128,0.15)' }}>
                 <div className="text-xs text-green-400/70 uppercase tracking-wider font-rubik mb-2">Реф. бонусы (внутренний)</div>

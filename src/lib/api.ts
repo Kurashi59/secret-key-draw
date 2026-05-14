@@ -53,6 +53,9 @@ export const api = {
 
     adminDeposit: (user_id: number, amount: number, balance_type: 'external' | 'referral', description?: string) =>
       request(a('admin_deposit'), { method: 'POST', body: JSON.stringify({ user_id, amount, balance_type, description }) }),
+
+    adminDeleteUser: (user_id: number, confirm: string) =>
+      request(a('admin_delete_user'), { method: 'POST', body: JSON.stringify({ user_id, confirm }) }),
   },
 
   content: {
@@ -64,21 +67,34 @@ export const api = {
     updateContacts: (updates: Record<string, string>) =>
       request(c('update_contacts'), { method: 'POST', body: JSON.stringify({ updates }) }),
 
+    getPaymentSettings: () => request(c('get_payment_settings')),
+    updatePaymentSettings: (updates: Record<string, string>) =>
+      request(c('update_payment_settings'), { method: 'POST', body: JSON.stringify({ updates }) }),
+
     getDoors: () => request(c('get_doors')),
     getAllDoors: () => request(c('get_all_doors')),
     updateDoor: (id: number, body: Record<string, unknown>) =>
       request(c('update_door'), { method: 'POST', body: JSON.stringify({ id, ...body }) }),
     createDoor: (body: Record<string, unknown>) =>
       request(c('create_door'), { method: 'POST', body: JSON.stringify(body) }),
+    deleteDoor: (door_id: number) =>
+      request(c('delete_door'), { method: 'POST', body: JSON.stringify({ door_id }) }),
 
     // Prizes
     getPrizes: (door_id: number) => request(c('get_prizes') + `&door_id=${door_id}`),
-    addPrize: (door_id: number, name: string, description?: string) =>
-      request(c('add_prize'), { method: 'POST', body: JSON.stringify({ door_id, name, description }) }),
-    updatePrize: (prize_id: number, name?: string, description?: string) =>
-      request(c('update_prize'), { method: 'POST', body: JSON.stringify({ prize_id, name, description }) }),
+    addPrize: (door_id: number, name: string, quantity: number, description?: string) =>
+      request(c('add_prize'), { method: 'POST', body: JSON.stringify({ door_id, name, quantity, description }) }),
+    updatePrize: (prize_id: number, name?: string, description?: string, quantity?: number) =>
+      request(c('update_prize'), { method: 'POST', body: JSON.stringify({ prize_id, name, description, quantity }) }),
     deletePrize: (prize_id: number) =>
       request(c('delete_prize'), { method: 'POST', body: JSON.stringify({ prize_id }) }),
+
+    // Prize frequency
+    getPrizeFrequency: (door_id: number) => request(c('get_prize_frequency') + `&door_id=${door_id}`),
+    addPrizeFrequency: (door_id: number, every_n: number, prize_amount: number, description: string) =>
+      request(c('add_prize_frequency'), { method: 'POST', body: JSON.stringify({ door_id, every_n, prize_amount, description }) }),
+    deletePrizeFrequency: (freq_id: number) =>
+      request(c('delete_prize_frequency'), { method: 'POST', body: JSON.stringify({ freq_id }) }),
 
     // Keys
     getMyKeys: () => request(c('get_my_keys')),
@@ -94,8 +110,8 @@ export const api = {
     history: () => request(c('history')),
 
     // Deposit
-    requestDeposit: (amount: number) =>
-      request(c('request_deposit'), { method: 'POST', body: JSON.stringify({ amount }) }),
+    requestDeposit: (amount: number, comment?: string) =>
+      request(c('request_deposit'), { method: 'POST', body: JSON.stringify({ amount, comment }) }),
 
     // Admin
     adminStats: () => request(c('admin_stats')),
@@ -106,5 +122,7 @@ export const api = {
     adminDeposits: () => request(c('admin_deposits')),
     adminConfirmDeposit: (request_id: number) =>
       request(c('admin_confirm_deposit'), { method: 'POST', body: JSON.stringify({ request_id }) }),
+    adminRejectDeposit: (request_id: number) =>
+      request(c('admin_reject_deposit'), { method: 'POST', body: JSON.stringify({ request_id }) }),
   },
 };

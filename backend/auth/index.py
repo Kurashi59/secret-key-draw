@@ -279,4 +279,27 @@ def handler(event: dict, context) -> dict:
         finally:
             conn.close()
 
+    if action == 'admin_delete_user':
+        if not token:
+            return err('Требуется авторизация', 401)
+        conn = get_conn()
+        try:
+            caller = get_user_by_token(conn, token)
+            if not caller or not caller.get('is_main_admin'):
+                return err('Только для главного администратора', 403)
+            target_id = body.get('user_id')
+            confirm = body.get('confirm', '')
+            if confirm != 'Удалить?':
+                return err('Введите "Удалить?" для подтверждения')
+            if target_id == caller['id']:
+                return err('Нельзя удалить самого себя')
+            with conn.cursor() as cur:
+                # Блокируем вместо физического удаления (чтобы сохранить историю)
+                cur.execute(f"UPDATE {S}.users SET is_blocked=TRUE, email=CONCAT('deleted_', id, '_', email) WHERE id=%s", (target_id,))
+                cur.execute(f"UPDATE {S}.sessions SET expires_at=NOW() WHERE user_id=%s", (target_id,))
+            conn.commit()
+            return ok({'message': 'Пользователь удалён'})
+        finally:
+            conn.close()
+
     return err('Неизвестное действие', 400)

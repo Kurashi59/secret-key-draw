@@ -1,5 +1,5 @@
 """
-API контента: двери, призы, ключи, покупка ключей, открытие дверей, транзакции, тексты, контакты.
+API контента: двери, призы, ключи, покупка ключей, открытие дверей, транзакции, тексты, контакты, QR.
 Роутинг: ?action=...
 """
 import json
@@ -94,13 +94,43 @@ def handler(event: dict, context) -> dict:
             conn.commit()
             return ok({'message': 'Контакты обновлены'})
 
+        # ── QR PAYMENT SETTINGS ───────────────────────────────────────────────
+        if action == 'get_payment_settings':
+            with conn.cursor() as cur:
+                cur.execute(f"SELECT key, value, label FROM {S}.payment_settings ORDER BY key")
+                rows = cur.fetchall()
+            return ok({r[0]: {'value': r[1], 'label': r[2]} for r in rows})
+
+        if action == 'update_payment_settings':
+            user = get_user_by_token(conn, token)
+            if not user or user['role'] != 'admin':
+                return err('Только для администратора', 403)
+            updates = body.get('updates', {})
+            with conn.cursor() as cur:
+                for key, value in updates.items():
+                    cur.execute(f"""INSERT INTO {S}.payment_settings (key, value, updated_at)
+                        VALUES (%s,%s,NOW()) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_at=NOW()""",
+                        (key, str(value)))
+            conn.commit()
+            return ok({'message': 'Настройки оплаты обновлены'})
+
         # ── DOORS ─────────────────────────────────────────────────────────────
         if action == 'get_doors':
+            user = get_user_by_token(conn, token)
             with conn.cursor() as cur:
+                # Проверяем, была ли открыта дверь-триггер пользователем
+                trigger_unlocked = False
+                if user:
+                    cur.execute(f"""
+                        SELECT COUNT(*) FROM {S}.door_opens do2
+                        JOIN {S}.doors d2 ON d2.id = do2.door_id
+                        WHERE do2.user_id=%s AND d2.is_trigger=TRUE""", (user['id'],))
+                    trigger_unlocked = (cur.fetchone()[0] > 0)
+
                 cur.execute(f"""
                     SELECT d.id, d.name, d.prize, d.prize_icon, d.key_price, d.rarity,
                            d.keys_sold, d.is_active, d.sort_order, d.draw_at,
-                           d.instant_open, d.key_type,
+                           d.instant_open, d.key_type, d.color, d.is_trigger, d.key_name,
                            COUNT(dp.id) as prizes_total,
                            COUNT(CASE WHEN dp.is_won=FALSE THEN 1 END) as prizes_left
                     FROM {S}.doors d
@@ -109,8 +139,15 @@ def handler(event: dict, context) -> dict:
                     GROUP BY d.id ORDER BY d.sort_order""")
                 rows = cur.fetchall()
             keys = ['id','name','prize','prize_icon','key_price','rarity','keys_sold',
-                    'is_active','sort_order','draw_at','instant_open','key_type','prizes_total','prizes_left']
-            return ok([dict(zip(keys, r)) for r in rows])
+                    'is_active','sort_order','draw_at','instant_open','key_type','color','is_trigger','key_name','prizes_total','prizes_left']
+            doors = [dict(zip(keys, r)) for r in rows]
+            # Добавляем флаг доступности (триггер-дверь всегда доступна, остальные — только после открытия триггера)
+            for d in doors:
+                if d['is_trigger']:
+                    d['is_unlocked'] = True
+                else:
+                    d['is_unlocked'] = trigger_unlocked
+            return ok({'doors': doors, 'trigger_unlocked': trigger_unlocked})
 
         if action == 'get_all_doors':
             user = get_user_by_token(conn, token)
@@ -120,7 +157,7 @@ def handler(event: dict, context) -> dict:
                 cur.execute(f"""
                     SELECT d.id, d.name, d.prize, d.prize_icon, d.key_price, d.rarity,
                            d.keys_sold, d.is_active, d.sort_order, d.draw_at,
-                           d.instant_open, d.key_type,
+                           d.instant_open, d.key_type, d.color, d.is_trigger, d.key_name,
                            COUNT(dp.id) as prizes_total,
                            COUNT(CASE WHEN dp.is_won=FALSE THEN 1 END) as prizes_left
                     FROM {S}.doors d
@@ -128,7 +165,7 @@ def handler(event: dict, context) -> dict:
                     GROUP BY d.id ORDER BY d.sort_order""")
                 rows = cur.fetchall()
             keys = ['id','name','prize','prize_icon','key_price','rarity','keys_sold',
-                    'is_active','sort_order','draw_at','instant_open','key_type','prizes_total','prizes_left']
+                    'is_active','sort_order','draw_at','instant_open','key_type','color','is_trigger','key_name','prizes_total','prizes_left']
             return ok([dict(zip(keys, r)) for r in rows])
 
         if action == 'update_door':
@@ -138,14 +175,17 @@ def handler(event: dict, context) -> dict:
             door_id = body.get('id')
             if not door_id:
                 return err('Нет id двери')
-            allowed = ['name','prize','prize_icon','key_price','rarity','is_active','draw_at','instant_open','key_type']
+            allowed = ['name','prize','prize_icon','key_price','rarity','is_active','draw_at','instant_open','key_type','color','is_trigger','key_name']
             with conn.cursor() as cur:
+                # Если устанавливаем эту дверь как триггер — снимаем флаг с остальных
+                if 'is_trigger' in body and body['is_trigger']:
+                    cur.execute(f"UPDATE {S}.doors SET is_trigger=FALSE WHERE id != %s", (door_id,))
                 for f in allowed:
                     if f in body:
                         val = body[f]
                         if f == 'key_price':
                             val = int(val)
-                        elif f in ('is_active','instant_open'):
+                        elif f in ('is_active','instant_open','is_trigger'):
                             val = bool(val)
                         elif f == 'draw_at' and val == '':
                             val = None
@@ -161,14 +201,27 @@ def handler(event: dict, context) -> dict:
                 cur.execute(f"SELECT COALESCE(MAX(sort_order),0)+1 FROM {S}.doors")
                 sort_order = cur.fetchone()[0]
                 cur.execute(f"""INSERT INTO {S}.doors
-                    (name,prize,prize_icon,key_price,rarity,instant_open,key_type,sort_order)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
+                    (name,prize,prize_icon,key_price,rarity,instant_open,key_type,sort_order,color,key_name)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
                     (body.get('name','Новая дверь'), body.get('prize','Приз'), body.get('prize_icon','🎁'),
                      int(body.get('key_price',99)), body.get('rarity','common'),
-                     bool(body.get('instant_open', True)), body.get('key_type','common'), sort_order))
+                     bool(body.get('instant_open', True)), body.get('key_type','common'), sort_order,
+                     body.get('color','#6b7280'), body.get('key_name','Стандартный ключ')))
                 new_id = cur.fetchone()[0]
             conn.commit()
             return ok({'id': new_id, 'message': 'Дверь создана'})
+
+        if action == 'delete_door':
+            user = get_user_by_token(conn, token)
+            if not user or user['role'] != 'admin':
+                return err('Только для администратора', 403)
+            door_id = body.get('door_id')
+            if not door_id:
+                return err('Нет door_id')
+            with conn.cursor() as cur:
+                cur.execute(f"UPDATE {S}.doors SET is_active=FALSE WHERE id=%s", (door_id,))
+            conn.commit()
+            return ok({'message': 'Дверь удалена'})
 
         # ── PRIZES ────────────────────────────────────────────────────────────
         if action == 'get_prizes':
@@ -178,28 +231,32 @@ def handler(event: dict, context) -> dict:
             user = get_user_by_token(conn, token)
             with conn.cursor() as cur:
                 if user and user['role'] == 'admin':
-                    cur.execute(f"""SELECT id,name,description,is_won,won_by_user_id,won_at,sort_order
+                    cur.execute(f"""SELECT id,name,description,is_won,won_by_user_id,won_at,sort_order,quantity
                         FROM {S}.door_prizes WHERE door_id=%s ORDER BY sort_order""", (door_id,))
+                    keys_p = ['id','name','description','is_won','won_by_user_id','won_at','sort_order','quantity']
                 else:
-                    cur.execute(f"""SELECT id,name,description,is_won,NULL,NULL,sort_order
+                    cur.execute(f"""SELECT id,name,description,is_won,NULL,NULL,sort_order,quantity
                         FROM {S}.door_prizes WHERE door_id=%s ORDER BY sort_order""", (door_id,))
+                    keys_p = ['id','name','description','is_won','won_by_user_id','won_at','sort_order','quantity']
                 rows = cur.fetchall()
-            keys = ['id','name','description','is_won','won_by_user_id','won_at','sort_order']
-            return ok([dict(zip(keys, r)) for r in rows])
+            return ok([dict(zip(keys_p, r)) for r in rows])
 
         if action == 'add_prize':
             user = get_user_by_token(conn, token)
             if not user or user['role'] != 'admin':
                 return err('Только для администратора', 403)
             door_id = body.get('door_id')
-            name = body.get('name','')
+            name = (body.get('name') or '').strip()
+            quantity = int(body.get('quantity', 1))
             if not door_id or not name:
                 return err('Нужны door_id и name')
+            if quantity < 1:
+                quantity = 1
             with conn.cursor() as cur:
                 cur.execute(f"SELECT COALESCE(MAX(sort_order),0)+1 FROM {S}.door_prizes WHERE door_id=%s", (door_id,))
                 so = cur.fetchone()[0]
-                cur.execute(f"INSERT INTO {S}.door_prizes (door_id,name,description,sort_order) VALUES (%s,%s,%s,%s) RETURNING id",
-                            (door_id, name, body.get('description',''), so))
+                cur.execute(f"INSERT INTO {S}.door_prizes (door_id,name,description,sort_order,quantity) VALUES (%s,%s,%s,%s,%s) RETURNING id",
+                            (door_id, name, body.get('description',''), so, quantity))
                 new_id = cur.fetchone()[0]
             conn.commit()
             return ok({'id': new_id, 'message': 'Приз добавлен'})
@@ -209,8 +266,10 @@ def handler(event: dict, context) -> dict:
             if not user or user['role'] != 'admin':
                 return err('Только для администратора', 403)
             prize_id = body.get('prize_id')
+            if not prize_id:
+                return err('Нет prize_id')
             with conn.cursor() as cur:
-                cur.execute(f"UPDATE {S}.door_prizes SET is_won=TRUE WHERE id=%s", (prize_id,))
+                cur.execute(f"UPDATE {S}.door_prizes SET is_won=TRUE WHERE id=%s AND is_won=FALSE", (prize_id,))
             conn.commit()
             return ok({'message': 'Приз удалён'})
 
@@ -221,13 +280,59 @@ def handler(event: dict, context) -> dict:
             prize_id = body.get('prize_id')
             name = body.get('name')
             description = body.get('description')
+            quantity = body.get('quantity')
             with conn.cursor() as cur:
                 if name:
                     cur.execute(f"UPDATE {S}.door_prizes SET name=%s WHERE id=%s", (name, prize_id))
                 if description is not None:
                     cur.execute(f"UPDATE {S}.door_prizes SET description=%s WHERE id=%s", (description, prize_id))
+                if quantity is not None:
+                    cur.execute(f"UPDATE {S}.door_prizes SET quantity=%s WHERE id=%s", (int(quantity), prize_id))
             conn.commit()
             return ok({'message': 'Приз обновлён'})
+
+        # ── PRIZE FREQUENCY ──────────────────────────────────────────────────
+        if action == 'get_prize_frequency':
+            door_id = qs.get('door_id') or body.get('door_id')
+            user = get_user_by_token(conn, token)
+            if not user or user['role'] != 'admin':
+                return err('Только для администратора', 403)
+            if not door_id:
+                return err('Нет door_id')
+            with conn.cursor() as cur:
+                cur.execute(f"SELECT id,every_n,prize_amount,description,sort_order FROM {S}.prize_frequency WHERE door_id=%s ORDER BY sort_order", (door_id,))
+                rows = cur.fetchall()
+            keys_f = ['id','every_n','prize_amount','description','sort_order']
+            return ok([dict(zip(keys_f, r)) for r in rows])
+
+        if action == 'add_prize_frequency':
+            user = get_user_by_token(conn, token)
+            if not user or user['role'] != 'admin':
+                return err('Только для администратора', 403)
+            door_id = body.get('door_id')
+            every_n = int(body.get('every_n', 1))
+            prize_amount = int(body.get('prize_amount', 1000))
+            description = body.get('description', f'Каждый {every_n}-й выигрывает {prize_amount} ₽')
+            with conn.cursor() as cur:
+                cur.execute(f"SELECT COALESCE(MAX(sort_order),0)+1 FROM {S}.prize_frequency WHERE door_id=%s", (door_id,))
+                so = cur.fetchone()[0]
+                cur.execute(f"INSERT INTO {S}.prize_frequency (door_id,every_n,prize_amount,description,sort_order) VALUES (%s,%s,%s,%s,%s) RETURNING id",
+                            (door_id, every_n, prize_amount, description, so))
+                new_id = cur.fetchone()[0]
+            conn.commit()
+            return ok({'id': new_id, 'message': 'Правило частоты добавлено'})
+
+        if action == 'delete_prize_frequency':
+            user = get_user_by_token(conn, token)
+            if not user or user['role'] != 'admin':
+                return err('Только для администратора', 403)
+            freq_id = body.get('freq_id')
+            if not freq_id:
+                return err('Нет freq_id')
+            with conn.cursor() as cur:
+                cur.execute(f"UPDATE {S}.prize_frequency SET sort_order=-1 WHERE id=%s", (freq_id,))
+            conn.commit()
+            return ok({'message': 'Правило удалено'})
 
         # ── KEYS ──────────────────────────────────────────────────────────────
         if action == 'get_my_keys':
@@ -255,20 +360,28 @@ def handler(event: dict, context) -> dict:
                 return err('Укажите door_id')
 
             with conn.cursor() as cur:
-                cur.execute(f"SELECT id,name,key_price,key_type,is_active FROM {S}.doors WHERE id=%s", (door_id,))
+                cur.execute(f"SELECT id,name,key_price,key_type,is_active,is_trigger,key_name FROM {S}.doors WHERE id=%s", (door_id,))
                 door = cur.fetchone()
             if not door:
                 return err('Дверь не найдена')
-            door_data = dict(zip(['id','name','key_price','key_type','is_active'], door))
+            door_data = dict(zip(['id','name','key_price','key_type','is_active','is_trigger','key_name'], door))
             if not door_data['is_active']:
                 return err('Дверь недоступна')
+
+            # Проверяем: если дверь не триггер — нужно чтобы пользователь открыл триггер-дверь
+            if not door_data['is_trigger']:
+                with conn.cursor() as cur:
+                    cur.execute(f"""SELECT COUNT(*) FROM {S}.door_opens do2
+                        JOIN {S}.doors d2 ON d2.id=do2.door_id
+                        WHERE do2.user_id=%s AND d2.is_trigger=TRUE""", (user['id'],))
+                    if cur.fetchone()[0] == 0:
+                        return err('Сначала необходимо открыть первую дверь')
 
             price = door_data['key_price']
             if user['external_balance'] < price:
                 return err(f'Недостаточно средств. Нужно {price} ₽, на счету {user["external_balance"]} ₽')
 
-            key_name_map = {'common': 'Обычный ключ', 'rare': 'Синий ключ', 'epic': 'Эпический ключ', 'legendary': 'Золотой ключ'}
-            key_name = key_name_map.get(door_data['key_type'], f'Ключ ({door_data["key_type"]})')
+            key_name = door_data['key_name'] or 'Стандартный ключ'
 
             with conn.cursor() as cur:
                 cur.execute(f"UPDATE {S}.users SET external_balance=external_balance-%s WHERE id=%s", (price, user['id']))
@@ -279,7 +392,7 @@ def handler(event: dict, context) -> dict:
                 cur.execute(f"UPDATE {S}.doors SET keys_sold=keys_sold+1 WHERE id=%s", (door_id,))
                 cur.execute(f"""INSERT INTO {S}.transactions (user_id,type,amount,balance_type,description,ref_id)
                     VALUES (%s,'key_purchase',%s,'external',%s,%s)""",
-                    (user['id'], -price, f'Покупка: {key_name} для "{door_data["name"]}"', key_id))
+                    (user['id'], -price, f'Покупка: {key_name} для «{door_data["name"]}»', key_id))
 
                 # Реферальный бонус (10%) при первой покупке ключа
                 cur.execute(f"SELECT referred_by FROM {S}.users WHERE id=%s", (user['id'],))
@@ -292,10 +405,10 @@ def handler(event: dict, context) -> dict:
                         cur.execute(f"UPDATE {S}.users SET referral_balance=referral_balance+%s WHERE id=%s", (bonus, referrer_id))
                         cur.execute(f"INSERT INTO {S}.referral_earnings (referrer_id,referred_id,amount,reason) VALUES (%s,%s,%s,'first_key_purchase')",
                                     (referrer_id, user['id'], bonus))
-                        cur.execute(f"INSERT INTO {S}.transactions (user_id,type,amount,balance_type,description) VALUES (%s,'referral_bonus',%s,'referral',%s)",
-                                    (referrer_id, bonus, f'Реферальный бонус за приглашённого пользователя'))
+                        cur.execute(f"INSERT INTO {S}.transactions (user_id,type,amount,balance_type,description) VALUES (%s,'referral_bonus',%s,'referral','Реферальный бонус за приглашённого пользователя')",
+                                    (referrer_id, bonus))
             conn.commit()
-            return ok({'message': f'Ключ "{key_name}" куплен', 'key_id': key_id, 'key_name': key_name})
+            return ok({'message': f'Ключ «{key_name}» куплен', 'key_id': key_id, 'key_name': key_name})
 
         # ── OPEN DOOR ─────────────────────────────────────────────────────────
         if action == 'open_door':
@@ -316,14 +429,13 @@ def handler(event: dict, context) -> dict:
             if not door_data['is_active']:
                 return err('Дверь недоступна')
 
-            # Проверка времени розыгрыша
             if not door_data['instant_open'] and door_data['draw_at']:
                 now = datetime.now(timezone.utc)
                 draw_at = door_data['draw_at']
                 if hasattr(draw_at, 'tzinfo') and draw_at.tzinfo is None:
                     draw_at = draw_at.replace(tzinfo=timezone.utc)
                 if now < draw_at:
-                    return err(f'Розыгрыш ещё не начался')
+                    return err('Розыгрыш ещё не начался')
 
             with conn.cursor() as cur:
                 cur.execute(f"SELECT id,key_type,is_used,user_id FROM {S}.user_keys WHERE id=%s", (key_id,))
@@ -335,25 +447,48 @@ def handler(event: dict, context) -> dict:
                 return err('Это не ваш ключ')
             if key_data['is_used']:
                 return err('Ключ уже использован')
-            if key_data['key_type'] != door_data['key_type']:
-                return err(f'Этот ключ не подходит к данной двери')
 
+            # Проверяем, сколько раз пользователь открывал эту дверь (для частоты призов)
             with conn.cursor() as cur:
-                # Выбираем рандомный незавоёванный приз
-                cur.execute(f"SELECT id,name FROM {S}.door_prizes WHERE door_id=%s AND is_won=FALSE ORDER BY RANDOM() LIMIT 1", (door_id,))
-                prize_row = cur.fetchone()
+                cur.execute(f"SELECT COUNT(*) FROM {S}.door_opens WHERE user_id=%s AND door_id=%s", (user['id'], door_id))
+                open_count = cur.fetchone()[0]
 
-            if not prize_row:
-                return err('Все призы в этой двери уже разыграны')
+            # Определяем приз: сначала ищем правило частоты
+            prize_name = None
+            with conn.cursor() as cur:
+                cur.execute(f"""SELECT every_n, prize_amount, description FROM {S}.prize_frequency
+                    WHERE door_id=%s AND sort_order >= 0 ORDER BY every_n DESC""", (door_id,))
+                freq_rules = cur.fetchall()
 
-            prize_id, prize_name = prize_row
+            open_number = open_count + 1  # номер текущего открытия
+            for rule in freq_rules:
+                every_n, prize_amount, description = rule
+                if every_n > 0 and open_number % every_n == 0:
+                    prize_name = description or f'{prize_amount} ₽'
+                    break
+
+            # Если не попал под правило — берём рандомный приз из списка
+            if not prize_name:
+                with conn.cursor() as cur:
+                    cur.execute(f"""SELECT id,name FROM {S}.door_prizes
+                        WHERE door_id=%s AND is_won=FALSE ORDER BY RANDOM() LIMIT 1""", (door_id,))
+                    prize_row = cur.fetchone()
+
+                if prize_row:
+                    prize_id_val, prize_name = prize_row
+                    with conn.cursor() as cur:
+                        cur.execute(f"UPDATE {S}.door_prizes SET is_won=TRUE, won_by_user_id=%s, won_at=NOW() WHERE id=%s", (user['id'], prize_id_val))
+                else:
+                    prize_name = 'Участник'
+                    prize_id_val = None
+            else:
+                prize_id_val = None
 
             with conn.cursor() as cur:
                 cur.execute(f"UPDATE {S}.user_keys SET is_used=TRUE, used_at=NOW() WHERE id=%s", (key_id,))
-                cur.execute(f"UPDATE {S}.door_prizes SET is_won=TRUE, won_by_user_id=%s, won_at=NOW() WHERE id=%s", (user['id'], prize_id))
                 cur.execute(f"""INSERT INTO {S}.door_opens (user_id,door_id,prize_won,prize_id,user_key_id)
                     VALUES (%s,%s,%s,%s,%s) RETURNING id""",
-                    (user['id'], door_id, prize_name, prize_id, key_id))
+                    (user['id'], door_id, prize_name, prize_id_val, key_id))
                 open_id = cur.fetchone()[0]
             conn.commit()
             return ok({'message': f'Вы выиграли: {prize_name}', 'prize': prize_name, 'open_id': open_id})
@@ -382,17 +517,18 @@ def handler(event: dict, context) -> dict:
             keys_list = ['id','prize_won','created_at','door_name','prize_icon']
             return ok([dict(zip(keys_list, r)) for r in rows])
 
-        # ── DEPOSIT (заглушка для ручного пополнения) ─────────────────────────
+        # ── DEPOSIT ───────────────────────────────────────────────────────────
         if action == 'request_deposit':
             user = get_user_by_token(conn, token)
             if not user:
                 return err('Требуется авторизация', 401)
             amount = int(body.get('amount', 0))
+            comment = (body.get('comment') or '').strip()
             if amount < 100:
                 return err('Минимальная сумма пополнения 100 ₽')
             with conn.cursor() as cur:
-                cur.execute(f"INSERT INTO {S}.deposit_requests (user_id,amount,status) VALUES (%s,%s,'pending') RETURNING id",
-                            (user['id'], amount))
+                cur.execute(f"INSERT INTO {S}.deposit_requests (user_id,amount,status,comment) VALUES (%s,%s,'pending',%s) RETURNING id",
+                            (user['id'], amount, comment))
                 req_id = cur.fetchone()[0]
             conn.commit()
             return ok({'request_id': req_id, 'message': f'Заявка на пополнение {amount} ₽ создана. Администратор зачислит средства.'})
@@ -407,8 +543,8 @@ def handler(event: dict, context) -> dict:
                 users_count = cur.fetchone()[0]
                 cur.execute(f"SELECT COUNT(*) FROM {S}.door_opens")
                 opens_count = cur.fetchone()[0]
-                cur.execute(f"SELECT COALESCE(SUM(amount),0) FROM {S}.transactions WHERE type='key_purchase' AND amount < 0")
-                revenue = abs(int(cur.fetchone()[0]))
+                cur.execute(f"SELECT COALESCE(SUM(ABS(amount)),0) FROM {S}.transactions WHERE type='key_purchase'")
+                revenue = int(cur.fetchone()[0])
                 cur.execute(f"SELECT COUNT(*) FROM {S}.referral_earnings")
                 ref_count = cur.fetchone()[0]
                 cur.execute(f"SELECT COUNT(*) FROM {S}.deposit_requests WHERE status='pending'")
@@ -465,11 +601,11 @@ def handler(event: dict, context) -> dict:
             if not user or user['role'] != 'admin':
                 return err('Только для администратора', 403)
             with conn.cursor() as cur:
-                cur.execute(f"""SELECT dr.id, dr.user_id, u.name, u.email, dr.amount, dr.status, dr.created_at
+                cur.execute(f"""SELECT dr.id, dr.user_id, u.name, u.email, dr.amount, dr.status, dr.created_at, dr.comment
                     FROM {S}.deposit_requests dr JOIN {S}.users u ON u.id=dr.user_id
                     ORDER BY dr.created_at DESC LIMIT 100""")
                 rows = cur.fetchall()
-            keys_list = ['id','user_id','user_name','user_email','amount','status','created_at']
+            keys_list = ['id','user_id','user_name','user_email','amount','status','created_at','comment']
             return ok([dict(zip(keys_list, r)) for r in rows])
 
         if action == 'admin_confirm_deposit':
@@ -477,6 +613,8 @@ def handler(event: dict, context) -> dict:
             if not user or user['role'] != 'admin':
                 return err('Только для администратора', 403)
             req_id = body.get('request_id')
+            if not req_id:
+                return err('Нет request_id')
             with conn.cursor() as cur:
                 cur.execute(f"SELECT user_id, amount, status FROM {S}.deposit_requests WHERE id=%s", (req_id,))
                 req = cur.fetchone()
@@ -486,14 +624,34 @@ def handler(event: dict, context) -> dict:
             if status == 'completed':
                 return err('Заявка уже выполнена')
             with conn.cursor() as cur:
-                cur.execute(f"UPDATE {S}.deposit_requests SET status='completed', updated_at=NOW() WHERE id=%s", (req_id,))
+                cur.execute(f"UPDATE {S}.deposit_requests SET status='completed', completed_at=NOW() WHERE id=%s", (req_id,))
                 cur.execute(f"UPDATE {S}.users SET external_balance=external_balance+%s WHERE id=%s", (amount, target_user_id))
-                cur.execute(f"INSERT INTO {S}.transactions (user_id,type,amount,balance_type,description,ref_id) VALUES (%s,'deposit',%s,'external','Пополнение счёта',%s)",
+                cur.execute(f"""INSERT INTO {S}.transactions (user_id,type,amount,balance_type,description,ref_id)
+                    VALUES (%s,'deposit',%s,'external','Пополнение счёта',%s)""",
                             (target_user_id, amount, req_id))
             conn.commit()
             return ok({'message': f'Баланс пополнен на {amount} ₽'})
 
-        return err('Неизвестное действие', 400)
+        if action == 'admin_reject_deposit':
+            user = get_user_by_token(conn, token)
+            if not user or user['role'] != 'admin':
+                return err('Только для администратора', 403)
+            req_id = body.get('request_id')
+            if not req_id:
+                return err('Нет request_id')
+            with conn.cursor() as cur:
+                cur.execute(f"SELECT status FROM {S}.deposit_requests WHERE id=%s", (req_id,))
+                req = cur.fetchone()
+            if not req:
+                return err('Заявка не найдена')
+            if req[0] != 'pending':
+                return err('Заявка уже обработана')
+            with conn.cursor() as cur:
+                cur.execute(f"UPDATE {S}.deposit_requests SET status='rejected', completed_at=NOW() WHERE id=%s", (req_id,))
+            conn.commit()
+            return ok({'message': 'Заявка отклонена'})
+
+        return err('Неизвестное действие', 404)
 
     finally:
         conn.close()
