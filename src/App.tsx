@@ -39,7 +39,7 @@ function NavBar({
 }) {
   const { user, logout } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
-  const [siteName, setSiteName] = useState("Тайный ключ");
+  const [siteName, setSiteName] = useState("Golden Door");
 
   useEffect(() => {
     api.content
