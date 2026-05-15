@@ -1,6 +1,6 @@
 """
-Авторизация: регистрация, вход, выход, профиль, управление пользователями.
-Роутинг: ?action=register|login|me|logout|update|admin_set_role|admin_deposit|admin_delete_user
+Авторизация: регистрация с ФИО/дата рождения/телефон, вход, выход, профиль.
+Роутинг: ?action=register|login|me|logout|update|admin_set_role|admin_deposit
 """
 import json
 import os

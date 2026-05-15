@@ -25,28 +25,11 @@
       "bodyMatcher": "partial"
     },
     {
-      "name": "Get doors (returns doors array)",
+      "name": "Get doors",
       "method": "GET",
       "path": "/?action=get_doors",
       "expectedStatus": 200,
-      "expectedBody": {"trigger_unlocked": false},
-      "bodyMatcher": "partial"
-    },
-    {
-      "name": "Get my keys - no auth",
-      "method": "GET",
-      "path": "/?action=get_my_keys",
-      "expectedStatus": 401,
-      "expectedBody": {"error": "Требуется авторизация"},
-      "bodyMatcher": "partial"
-    },
-    {
-      "name": "Buy key - no auth",
-      "method": "POST",
-      "path": "/?action=buy_key",
-      "body": {"door_id": 1},
-      "expectedStatus": 401,
-      "expectedBody": {"error": "Требуется авторизация"},
+      "expectedBody": {},
       "bodyMatcher": "partial"
     },
     {

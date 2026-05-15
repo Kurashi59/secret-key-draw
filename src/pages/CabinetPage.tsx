@@ -87,15 +87,15 @@ export default function CabinetPage({ onGoAuth }: { onGoAuth: () => void }) {
     if (!user) return;
     if (activeTab === 2) {
       setLoadingHistory(true);
-      api.content.history().then(h => setHistory(h as unknown as HistoryItem[])).catch(() => {}).finally(() => setLoadingHistory(false));
+      api.content.history().then(setHistory).catch(() => {}).finally(() => setLoadingHistory(false));
     }
     if (activeTab === 4) {
       setLoadingTx(true);
-      api.content.getTransactions().then(t => setTransactions(t as unknown as Transaction[])).catch(() => {}).finally(() => setLoadingTx(false));
+      api.content.getTransactions().then(setTransactions).catch(() => {}).finally(() => setLoadingTx(false));
     }
     if (activeTab === 1) {
       setLoadingKeys(true);
-      api.content.getMyKeys().then(k => setMyKeys(k as unknown as UserKey[])).catch(() => {}).finally(() => setLoadingKeys(false));
+      api.content.getMyKeys().then(setMyKeys).catch(() => {}).finally(() => setLoadingKeys(false));
     }
   }, [activeTab, user]);
 
