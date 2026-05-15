@@ -14,7 +14,7 @@ import AboutPage from "./pages/AboutPage";
 import ContactsPage from "./pages/ContactsPage";
 import AuthPage from "./pages/AuthPage";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1 } } });
 
 const NAV_ITEMS = [
   { id: 'home', label: 'Главная', icon: 'Home', adminOnly: false },
