@@ -2,216 +2,10 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { api } from '@/lib/api';
 import Icon from '@/components/ui/icon';
-
-const ADMIN_TABS = ['Обзор', 'Двери', 'Тексты сайта', 'Контакты', 'Пользователи', 'Рефералы', 'Заявки', 'Оплата'];
-
-interface Door {
-  id: number; name: string; prize: string; prize_icon: string;
-  key_price: number; rarity: string; keys_sold: number; is_active: boolean;
-  draw_at: string | null; instant_open: boolean; key_type: string;
-  color: string; is_trigger: boolean; key_name: string;
-  prizes_total: number; prizes_left: number;
-}
-interface Prize { id: number; name: string; description: string; is_won: boolean; sort_order: number; quantity: number; }
-interface PrizeFreq { id: number; every_n: number; prize_amount: number; description: string; sort_order: number; }
-interface SiteContent { [key: string]: { value: string; label: string } }
-interface ContactsInfo { [key: string]: { value: string; label: string } }
-interface AdminUser {
-  id: number; name: string; full_name: string; email: string; phone: string;
-  birth_date: string; role: string; referral_code: string;
-  external_balance: number; referral_balance: number; keys_count: number;
-  is_blocked: boolean; is_main_admin: boolean; created_at: string;
-}
-interface RefAgent { id: number; name: string; referral_code: string; invited: number; earned: number; }
-interface DepositReq { id: number; user_id: number; user_name: string; user_email: string; amount: number; status: string; created_at: string; comment: string; }
-
-function StatCard({ icon, label, value }: { icon: string; label: string; value: string }) {
-  return (
-    <div className="card-glow rounded-xl p-4">
-      <div className="flex items-center gap-3 mb-2">
-        <div className="w-9 h-9 rounded-lg bg-gold-500/10 flex items-center justify-center">
-          <Icon name={icon} fallback="BarChart2" size={18} className="text-gold-400" />
-        </div>
-        <div className="text-xs text-white/40 font-rubik uppercase tracking-wider">{label}</div>
-      </div>
-      <div className="font-oswald text-2xl text-white font-bold">{value}</div>
-    </div>
-  );
-}
-
-const COLORS = ['#6b7280','#ef4444','#f97316','#eab308','#22c55e','#3b82f6','#8b5cf6','#ec4899','#14b8a6','#f59e0b'];
-const RARITIES = [
-  { v: 'common', label: 'Обычная' },
-  { v: 'rare', label: 'Редкая' },
-  { v: 'epic', label: 'Эпическая' },
-  { v: 'legendary', label: 'Легендарная' },
-];
-
-function PrizesEditor({ door, onClose }: { door: Door; onClose: () => void }) {
-  const [prizes, setPrizes] = useState<Prize[]>([]);
-  const [frequencies, setFrequencies] = useState<PrizeFreq[]>([]);
-  const [newPrize, setNewPrize] = useState('');
-  const [newQty, setNewQty] = useState(1);
-  const [loading, setLoading] = useState(true);
-  const [msg, setMsg] = useState('');
-  const [activeTab, setActiveTab] = useState<'prizes' | 'frequency'>('prizes');
-  const [newFreqN, setNewFreqN] = useState(10);
-  const [newFreqAmt, setNewFreqAmt] = useState(1000);
-  const [newFreqDesc, setNewFreqDesc] = useState('');
-
-  const load = useCallback(() => {
-    setLoading(true);
-    Promise.all([
-      api.content.getPrizes(door.id),
-      api.content.getPrizeFrequency(door.id),
-    ]).then(([p, f]) => {
-      setPrizes(p as unknown as Prize[]);
-      setFrequencies((f as unknown as PrizeFreq[]).filter((r: PrizeFreq) => r.sort_order >= 0));
-    }).catch(() => {}).finally(() => setLoading(false));
-  }, [door.id]);
-
-  useEffect(() => { load(); }, [load]);
-
-  const add = async () => {
-    if (!newPrize.trim()) return;
-    try {
-      await api.content.addPrize(door.id, newPrize.trim(), newQty);
-      setNewPrize(''); setNewQty(1);
-      load(); setMsg('Приз добавлен');
-    } catch (e: unknown) { setMsg(e instanceof Error ? e.message : 'Ошибка'); }
-  };
-
-  const remove = async (id: number) => {
-    if (!confirm('Удалить приз?')) return;
-    try { await api.content.deletePrize(id); load(); }
-    catch (e: unknown) { setMsg(e instanceof Error ? e.message : 'Ошибка'); }
-  };
-
-  const addFreq = async () => {
-    const desc = newFreqDesc || `Каждый ${newFreqN}-й выигрывает ${newFreqAmt.toLocaleString()} ₽`;
-    try {
-      await api.content.addPrizeFrequency(door.id, newFreqN, newFreqAmt, desc);
-      setNewFreqDesc(''); load(); setMsg('Правило добавлено');
-    } catch (e: unknown) { setMsg(e instanceof Error ? e.message : 'Ошибка'); }
-  };
-
-  const removeFreq = async (id: number) => {
-    try { await api.content.deletePrizeFrequency(id); load(); }
-    catch (e: unknown) { setMsg(e instanceof Error ? e.message : 'Ошибка'); }
-  };
-
-  const inputCls = 'bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-white font-rubik text-sm focus:outline-none focus:border-gold-500/50';
-
-  const activePrizes = prizes.filter(p => !p.is_won);
-  const wonPrizes = prizes.filter(p => p.is_won);
-  const totalPrizeSlots = activePrizes.reduce((s, p) => s + (p.quantity || 1), 0);
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-4">
-      <div className="w-full max-w-lg card-glow rounded-2xl p-6 max-h-[90vh] flex flex-col">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="font-oswald text-lg text-white">Настройка призов: {door.name}</h3>
-          <button onClick={onClose} className="text-white/40 hover:text-white transition-colors"><Icon name="X" size={20} /></button>
-        </div>
-        {msg && <p className="text-xs text-green-400 mb-2 font-rubik">{msg}</p>}
-
-        <div className="flex gap-2 mb-4">
-          <button onClick={() => setActiveTab('prizes')} className={`flex-1 py-2 rounded-xl text-xs font-oswald tracking-wider uppercase transition-all ${activeTab === 'prizes' ? 'bg-gold-500/20 text-gold-400 border border-gold-500/30' : 'text-white/40 border border-white/10'}`}>
-            Список призов ({totalPrizeSlots} шт)
-          </button>
-          <button onClick={() => setActiveTab('frequency')} className={`flex-1 py-2 rounded-xl text-xs font-oswald tracking-wider uppercase transition-all ${activeTab === 'frequency' ? 'bg-gold-500/20 text-gold-400 border border-gold-500/30' : 'text-white/40 border border-white/10'}`}>
-            Частота выигрыша
-          </button>
-        </div>
-
-        {activeTab === 'prizes' && (
-          <>
-            <div className="flex gap-2 mb-3">
-              <input value={newPrize} onChange={e => setNewPrize(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && add()}
-                placeholder="Название приза"
-                className={`flex-1 ${inputCls}`} />
-              <input type="number" min={1} value={newQty} onChange={e => setNewQty(Math.max(1, +e.target.value))}
-                className={`w-16 ${inputCls} text-center`} title="Количество" />
-              <button onClick={add} className="btn-gold px-4 py-2 rounded-xl text-xs whitespace-nowrap">+ Добавить</button>
-            </div>
-            <div className="overflow-y-auto flex-1 space-y-2">
-              {loading ? <div className="text-center py-6 text-white/30 text-sm font-rubik">Загрузка...</div> :
-                activePrizes.length === 0 ? (
-                  <div className="text-center py-6 text-white/30 text-sm font-rubik">Призы не добавлены</div>
-                ) : activePrizes.map(p => (
-                  <div key={p.id} className="flex items-center justify-between bg-white/5 rounded-xl px-3 py-2">
-                    <div>
-                      <span className="text-sm text-white/80 font-rubik">{p.name}</span>
-                      <span className="ml-2 text-xs text-gold-400 font-oswald">× {p.quantity || 1}</span>
-                    </div>
-                    <button onClick={() => remove(p.id)} className="text-red-400/60 hover:text-red-400 transition-colors ml-2">
-                      <Icon name="Trash2" size={14} />
-                    </button>
-                  </div>
-                ))
-              }
-              {wonPrizes.length > 0 && (
-                <div className="pt-2">
-                  <div className="text-xs text-white/20 font-rubik mb-2">Разыграны ({wonPrizes.length} шт):</div>
-                  {wonPrizes.map(p => (
-                    <div key={p.id} className="flex items-center justify-between bg-white/3 rounded-xl px-3 py-1.5 opacity-40">
-                      <span className="text-sm text-white/50 font-rubik line-through">{p.name}</span>
-                      <span className="text-xs text-white/30">выдан</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </>
-        )}
-
-        {activeTab === 'frequency' && (
-          <>
-            <div className="text-xs text-white/40 font-rubik mb-3">
-              Правила частоты применяются по номеру открытия двери пользователем. Если несколько правил совпадают — берётся первое совпадение. Если ни одно не совпадает — выдаётся случайный приз из списка.
-            </div>
-            <div className="space-y-2 mb-3">
-              <div className="flex gap-2">
-                <div className="flex-1">
-                  <label className="text-xs text-white/40 font-rubik block mb-1">Каждый N-й</label>
-                  <input type="number" min={1} value={newFreqN} onChange={e => setNewFreqN(+e.target.value)} className={`w-full ${inputCls}`} />
-                </div>
-                <div className="flex-1">
-                  <label className="text-xs text-white/40 font-rubik block mb-1">Сумма (₽)</label>
-                  <input type="number" min={0} value={newFreqAmt} onChange={e => setNewFreqAmt(+e.target.value)} className={`w-full ${inputCls}`} />
-                </div>
-              </div>
-              <input value={newFreqDesc} onChange={e => setNewFreqDesc(e.target.value)}
-                placeholder={`Описание (авто: "Каждый ${newFreqN}-й выигрывает ${newFreqAmt} ₽")`}
-                className={`w-full ${inputCls}`} />
-              <button onClick={addFreq} className="btn-gold px-4 py-2 rounded-xl text-xs w-full">+ Добавить правило</button>
-            </div>
-            <div className="overflow-y-auto flex-1 space-y-2">
-              {loading ? <div className="text-center py-4 text-white/30 text-sm font-rubik">Загрузка...</div> :
-                frequencies.length === 0 ? (
-                  <div className="text-center py-4 text-white/30 text-sm font-rubik">
-                    По умолчанию — случайный приз из списка
-                  </div>
-                ) : frequencies.map(f => (
-                  <div key={f.id} className="flex items-center justify-between bg-white/5 rounded-xl px-3 py-2">
-                    <div>
-                      <div className="text-sm text-white/80 font-rubik">{f.description}</div>
-                      <div className="text-xs text-gold-400/60 font-oswald">Каждый {f.every_n}-й → {f.prize_amount.toLocaleString()} ₽</div>
-                    </div>
-                    <button onClick={() => removeFreq(f.id)} className="text-red-400/60 hover:text-red-400 transition-colors ml-2">
-                      <Icon name="Trash2" size={14} />
-                    </button>
-                  </div>
-                ))
-              }
-            </div>
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
+import { ADMIN_TABS, Door, SiteContent, ContactsInfo, AdminUser, RefAgent, DepositReq } from './admin/AdminTypes';
+import { StatCard, PrizesEditor } from './admin/AdminPrizesEditor';
+import { AdminDoorsTab } from './admin/AdminDoorsTab';
+import { AdminUsersTab, AdminReferralsTab, AdminDepositsTab, AdminUsersModals } from './admin/AdminUsersTab';
 
 export default function AdminPage({ onGoAuth }: { onGoAuth: () => void }) {
   const { user } = useAuth();
@@ -373,8 +167,8 @@ export default function AdminPage({ onGoAuth }: { onGoAuth: () => void }) {
     const reader = new FileReader();
     reader.onload = ev => {
       const dataUrl = ev.target?.result as string;
-      setQrUrl(dataUrl); // показываем превью
-      setQrPendingBase64(dataUrl); // запоминаем для загрузки
+      setQrUrl(dataUrl);
+      setQrPendingBase64(dataUrl);
     };
     reader.readAsDataURL(file);
   };
@@ -444,43 +238,21 @@ export default function AdminPage({ onGoAuth }: { onGoAuth: () => void }) {
 
   const inputCls = 'w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-white font-rubik text-sm focus:outline-none focus:border-gold-500/50 transition-colors';
 
-  const statusLabel: Record<string, string> = { pending: 'Ожидает', completed: 'Выполнено', rejected: 'Отклонено' };
-  const statusColor: Record<string, string> = { pending: 'text-yellow-400', completed: 'text-green-400', rejected: 'text-red-400' };
-
   return (
     <div className="min-h-screen grid-bg pt-24 pb-16 px-4">
       {prizesForDoor && <PrizesEditor door={prizesForDoor} onClose={() => setPrizesForDoor(null)} />}
 
-      {deleteConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-4">
-          <div className="w-full max-w-sm card-glow rounded-2xl p-6">
-            <h3 className="font-oswald text-lg text-white mb-2">Удаление пользователя</h3>
-            <p className="text-white/50 font-rubik text-sm mb-4">Введите <span className="text-red-400 font-bold">Удалить?</span> для подтверждения</p>
-            <input value={deleteConfirm.input} onChange={e => setDeleteConfirm({ ...deleteConfirm, input: e.target.value })}
-              placeholder='Удалить?' className={inputCls + ' mb-4'} />
-            <div className="flex gap-3">
-              <button onClick={() => setDeleteConfirm(null)} className="flex-1 py-2 rounded-xl text-white/50 border border-white/10 text-sm font-rubik hover:border-white/20">Отмена</button>
-              <button onClick={deleteUser} className={`flex-1 py-2 rounded-xl text-sm font-oswald tracking-wider uppercase ${deleteConfirm.input === 'Удалить?' ? 'bg-red-600 text-white hover:bg-red-500' : 'bg-red-600/30 text-red-400/50 cursor-not-allowed'}`}>
-                Удалить
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {depositUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-4">
-          <div className="w-full max-w-sm card-glow rounded-2xl p-6">
-            <h3 className="font-oswald text-lg text-white mb-4">Пополнить баланс</h3>
-            <input type="number" min={1} value={depositUser.amount} onChange={e => setDepositUser({ ...depositUser, amount: e.target.value })}
-              placeholder="Сумма (₽)" className={inputCls + ' mb-4'} />
-            <div className="flex gap-3">
-              <button onClick={() => setDepositUser(null)} className="flex-1 py-2 rounded-xl text-white/50 border border-white/10 text-sm font-rubik hover:border-white/20">Отмена</button>
-              <button onClick={manualDeposit} className="flex-1 btn-gold py-2 rounded-xl text-sm">Пополнить</button>
-            </div>
-          </div>
-        </div>
-      )}
+      <AdminUsersModals
+        deleteConfirm={deleteConfirm}
+        depositUser={depositUser}
+        inputCls={inputCls}
+        onSetDeleteConfirm={setDeleteConfirm}
+        onDeleteUser={deleteUser}
+        onSetDepositUser={setDepositUser}
+        onManualDeposit={manualDeposit}
+        onDepositUserChange={patch => setDepositUser(prev => prev ? { ...prev, ...patch } : null)}
+        onDeleteConfirmChange={patch => setDeleteConfirm(prev => prev ? { ...prev, ...patch } : null)}
+      />
 
       <div className="max-w-5xl mx-auto">
         <div className="flex items-center justify-between mb-6 fade-up-1">
@@ -519,116 +291,20 @@ export default function AdminPage({ onGoAuth }: { onGoAuth: () => void }) {
 
             {/* Двери */}
             {tab === 1 && (
-              <div className="space-y-4 fade-up-3">
-                {doorMsg && <p className={`text-sm font-rubik ${doorMsg.includes('Ошибка') || doorMsg.includes('ошибка') ? 'text-red-400' : 'text-green-400'}`}>{doorMsg}</p>}
-                <button onClick={createDoor} className="btn-gold px-5 py-2 rounded-xl text-sm">+ Создать дверь</button>
-                {doors.map(door => (
-                  <div key={door.id} className="card-glow rounded-xl p-4">
-                    {editingDoor === door.id ? (
-                      <div className="space-y-3">
-                        <div className="grid grid-cols-2 gap-3">
-                          <div>
-                            <label className="text-xs text-white/40 font-rubik block mb-1">Название двери</label>
-                            <input value={doorDraft.name || ''} onChange={e => setDoorDraft(p => ({ ...p, name: e.target.value }))} className={inputCls} />
-                          </div>
-                          <div>
-                            <label className="text-xs text-white/40 font-rubik block mb-1">Название ключа</label>
-                            <input value={doorDraft.key_name || ''} onChange={e => setDoorDraft(p => ({ ...p, key_name: e.target.value }))} className={inputCls} />
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-2 gap-3">
-                          <div>
-                            <label className="text-xs text-white/40 font-rubik block mb-1">Иконка приза</label>
-                            <input value={doorDraft.prize_icon || ''} onChange={e => setDoorDraft(p => ({ ...p, prize_icon: e.target.value }))} className={inputCls} />
-                          </div>
-                          <div>
-                            <label className="text-xs text-white/40 font-rubik block mb-1">Описание приза</label>
-                            <input value={doorDraft.prize || ''} onChange={e => setDoorDraft(p => ({ ...p, prize: e.target.value }))} className={inputCls} />
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-2 gap-3">
-                          <div>
-                            <label className="text-xs text-white/40 font-rubik block mb-1">Цена ключа (₽)</label>
-                            <input type="number" value={doorDraft.key_price || 0} onChange={e => setDoorDraft(p => ({ ...p, key_price: +e.target.value }))} className={inputCls} />
-                          </div>
-                          <div>
-                            <label className="text-xs text-white/40 font-rubik block mb-1">Редкость</label>
-                            <select value={doorDraft.rarity || 'common'} onChange={e => setDoorDraft(p => ({ ...p, rarity: e.target.value }))} className={inputCls}>
-                              {RARITIES.map(r => <option key={r.v} value={r.v}>{r.label}</option>)}
-                            </select>
-                          </div>
-                        </div>
-                        <div>
-                          <label className="text-xs text-white/40 font-rubik block mb-1">Цвет двери</label>
-                          <div className="flex gap-2 flex-wrap">
-                            {COLORS.map(c => (
-                              <button key={c} onClick={() => setDoorDraft(p => ({ ...p, color: c }))}
-                                className={`w-7 h-7 rounded-lg border-2 transition-all ${doorDraft.color === c ? 'border-white scale-110' : 'border-transparent'}`}
-                                style={{ background: c }} />
-                            ))}
-                            <input type="color" value={doorDraft.color || '#6b7280'} onChange={e => setDoorDraft(p => ({ ...p, color: e.target.value }))}
-                              className="w-7 h-7 rounded-lg cursor-pointer border-0 bg-transparent" title="Свой цвет" />
-                          </div>
-                        </div>
-                        <div>
-                          <label className="text-xs text-white/40 font-rubik block mb-1">Дата/время розыгрыша</label>
-                          <input type="datetime-local" value={doorDraft.draw_at_input || ''} onChange={e => setDoorDraft(p => ({ ...p, draw_at_input: e.target.value }))} className={inputCls} />
-                        </div>
-                        <div className="flex flex-wrap gap-4">
-                          <label className="flex items-center gap-2 cursor-pointer">
-                            <input type="checkbox" checked={!!doorDraft.instant_open}
-                              onChange={e => setDoorDraft(p => ({ ...p, instant_open: e.target.checked }))} className="w-4 h-4 accent-gold-500" />
-                            <span className="text-xs text-white/60 font-rubik">Мгновенное открытие</span>
-                          </label>
-                          <label className="flex items-center gap-2 cursor-pointer">
-                            <input type="checkbox" checked={!!doorDraft.is_active}
-                              onChange={e => setDoorDraft(p => ({ ...p, is_active: e.target.checked }))} className="w-4 h-4 accent-gold-500" />
-                            <span className="text-xs text-white/60 font-rubik">Активна</span>
-                          </label>
-                          <label className="flex items-center gap-2 cursor-pointer" title="Только одна дверь может быть стартовой">
-                            <input type="checkbox" checked={!!doorDraft.is_trigger}
-                              onChange={e => setDoorDraft(p => ({ ...p, is_trigger: e.target.checked }))} className="w-4 h-4 accent-gold-500" />
-                            <span className="text-xs text-gold-400 font-rubik">Стартовая дверь (открывает доступ к остальным)</span>
-                          </label>
-                        </div>
-                        <div className="flex gap-2">
-                          <button onClick={() => saveDoor(door.id)} className="btn-gold px-5 py-2 rounded-xl text-sm">Сохранить</button>
-                          <button onClick={() => setEditingDoor(null)} className="px-5 py-2 rounded-xl border border-white/10 text-white/50 text-sm font-rubik hover:border-white/20">Отмена</button>
-                          <button onClick={() => deleteDoor(door.id)} className="px-5 py-2 rounded-xl bg-red-900/30 border border-red-500/20 text-red-400 text-sm font-rubik hover:bg-red-900/50 ml-auto">
-                            <Icon name="Trash2" size={14} className="inline mr-1" />Удалить дверь
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-lg flex items-center justify-center text-xl" style={{ background: door.color || '#6b7280' }}>
-                            {door.prize_icon}
-                          </div>
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <span className="font-oswald text-white">{door.name}</span>
-                              {door.is_trigger && <span className="text-xs bg-gold-500/20 text-gold-400 border border-gold-500/30 px-2 py-0.5 rounded-full font-rubik">Стартовая</span>}
-                              {!door.is_active && <span className="text-xs bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-0.5 rounded-full font-rubik">Скрыта</span>}
-                            </div>
-                            <div className="text-xs text-white/40 font-rubik">
-                              Ключ: {door.key_name} · {door.key_price} ₽ · Призов: {door.prizes_left}/{door.prizes_total}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <button onClick={() => setPrizesForDoor(door)} className="px-3 py-1.5 rounded-xl border border-gold-500/30 text-gold-400 text-xs font-oswald uppercase tracking-wider hover:border-gold-400/50">
-                            Призы
-                          </button>
-                          <button onClick={() => startEdit(door)} className="px-3 py-1.5 rounded-xl border border-white/10 text-white/60 text-xs font-oswald uppercase tracking-wider hover:border-white/20">
-                            Изменить
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
+              <AdminDoorsTab
+                doors={doors}
+                doorMsg={doorMsg}
+                editingDoor={editingDoor}
+                doorDraft={doorDraft}
+                inputCls={inputCls}
+                onCreateDoor={createDoor}
+                onStartEdit={startEdit}
+                onSaveDoor={saveDoor}
+                onDeleteDoor={deleteDoor}
+                onCancelEdit={() => setEditingDoor(null)}
+                onSetPrizesForDoor={setPrizesForDoor}
+                onDoorDraftChange={patch => setDoorDraft(p => ({ ...p, ...patch }))}
+              />
             )}
 
             {/* Тексты сайта */}
@@ -665,145 +341,35 @@ export default function AdminPage({ onGoAuth }: { onGoAuth: () => void }) {
 
             {/* Пользователи */}
             {tab === 4 && (
-              <div className="space-y-4 fade-up-3">
-                {userMsg && <p className={`text-sm font-rubik ${userMsg.includes('Ошибка') || userMsg.includes('ошибка') || userMsg.includes('введите') ? 'text-red-400' : 'text-green-400'}`}>{userMsg}</p>}
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm font-rubik">
-                    <thead>
-                      <tr className="text-left border-b border-white/10">
-                        {['Имя','Email','Баланс','Роль','Статус','Действия'].map(h => (
-                          <th key={h} className="py-2 px-3 text-white/40 text-xs font-normal">{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {adminUsers.map(u => (
-                        <tr key={u.id} className="border-b border-white/5 hover:bg-white/3 transition-colors">
-                          <td className="py-2 px-3">
-                            <div className="text-white/80">{u.name}</div>
-                            <div className="text-xs text-white/30">{u.phone || '—'}</div>
-                          </td>
-                          <td className="py-2 px-3 text-white/50">{u.email}</td>
-                          <td className="py-2 px-3 text-gold-400">{u.external_balance.toLocaleString()} ₽</td>
-                          <td className="py-2 px-3">
-                            <span className={`text-xs px-2 py-0.5 rounded-full ${u.role === 'admin' ? 'bg-gold-500/20 text-gold-400' : 'bg-white/10 text-white/50'}`}>
-                              {u.role === 'admin' ? 'Адм.' : 'Пользователь'}
-                            </span>
-                          </td>
-                          <td className="py-2 px-3">
-                            <span className={`text-xs ${u.is_blocked ? 'text-red-400' : 'text-green-400'}`}>
-                              {u.is_blocked ? 'Заблокирован' : 'Активен'}
-                            </span>
-                          </td>
-                          <td className="py-2 px-3">
-                            <div className="flex flex-wrap gap-1">
-                              <button onClick={() => setDepositUser({ userId: u.id, amount: '' })}
-                                className="text-xs px-2 py-1 rounded-lg bg-gold-500/10 text-gold-400 hover:bg-gold-500/20 transition-colors">
-                                + Баланс
-                              </button>
-                              <button onClick={() => toggleBlock(u.id, u.is_blocked)}
-                                className={`text-xs px-2 py-1 rounded-lg transition-colors ${u.is_blocked ? 'bg-green-500/10 text-green-400 hover:bg-green-500/20' : 'bg-red-500/10 text-red-400 hover:bg-red-500/20'}`}>
-                                {u.is_blocked ? 'Разблокировать' : 'Заблокировать'}
-                              </button>
-                              {user.is_main_admin && !u.is_main_admin && (
-                                <>
-                                  <button onClick={() => setRole(u.id, u.role === 'admin' ? 'user' : 'admin')}
-                                    className="text-xs px-2 py-1 rounded-lg bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 transition-colors">
-                                    {u.role === 'admin' ? 'Снять адм.' : 'Назначить адм.'}
-                                  </button>
-                                  <button onClick={() => setDeleteConfirm({ userId: u.id, input: '' })}
-                                    className="text-xs px-2 py-1 rounded-lg bg-red-900/20 text-red-400/70 hover:bg-red-900/40 hover:text-red-400 transition-colors">
-                                    Удалить
-                                  </button>
-                                </>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+              <AdminUsersTab
+                adminUsers={adminUsers}
+                userMsg={userMsg}
+                isMainAdmin={!!user.is_main_admin}
+                inputCls={inputCls}
+                deleteConfirm={deleteConfirm}
+                depositUser={depositUser}
+                onToggleBlock={toggleBlock}
+                onSetRole={setRole}
+                onSetDeleteConfirm={setDeleteConfirm}
+                onDeleteUser={deleteUser}
+                onSetDepositUser={setDepositUser}
+                onManualDeposit={manualDeposit}
+                onDepositUserChange={patch => setDepositUser(prev => prev ? { ...prev, ...patch } : null)}
+                onDeleteConfirmChange={patch => setDeleteConfirm(prev => prev ? { ...prev, ...patch } : null)}
+              />
             )}
 
             {/* Рефералы */}
-            {tab === 5 && (
-              <div className="fade-up-3">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm font-rubik">
-                    <thead>
-                      <tr className="text-left border-b border-white/10">
-                        {['Имя','Реф. код','Приглашено','Заработано'].map(h => (
-                          <th key={h} className="py-2 px-3 text-white/40 text-xs font-normal">{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {refAgents.map(r => (
-                        <tr key={r.id} className="border-b border-white/5 hover:bg-white/3 transition-colors">
-                          <td className="py-2 px-3 text-white/80">{r.name}</td>
-                          <td className="py-2 px-3"><code className="text-gold-400 text-xs bg-gold-500/10 px-2 py-0.5 rounded">{r.referral_code}</code></td>
-                          <td className="py-2 px-3 text-white/60">{r.invited}</td>
-                          <td className="py-2 px-3 text-gold-400">{Number(r.earned).toLocaleString()} ₽</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
+            {tab === 5 && <AdminReferralsTab refAgents={refAgents} />}
 
             {/* Заявки */}
             {tab === 6 && (
-              <div className="space-y-4 fade-up-3">
-                {depositMsg && <p className={`text-sm font-rubik ${depositMsg.includes('Ошибка') || depositMsg.includes('ошибка') ? 'text-red-400' : 'text-green-400'}`}>{depositMsg}</p>}
-                {deposits.length === 0 ? (
-                  <div className="text-center py-12 text-white/30 font-rubik">Заявок нет</div>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm font-rubik">
-                      <thead>
-                        <tr className="text-left border-b border-white/10">
-                          {['Пользователь','Сумма','Статус','Комментарий','Дата','Действия'].map(h => (
-                            <th key={h} className="py-2 px-3 text-white/40 text-xs font-normal">{h}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {deposits.map(d => (
-                          <tr key={d.id} className="border-b border-white/5 hover:bg-white/3 transition-colors">
-                            <td className="py-2 px-3">
-                              <div className="text-white/80">{d.user_name}</div>
-                              <div className="text-xs text-white/30">{d.user_email}</div>
-                            </td>
-                            <td className="py-2 px-3 text-gold-400 font-bold">{d.amount.toLocaleString()} ₽</td>
-                            <td className="py-2 px-3">
-                              <span className={`text-xs ${statusColor[d.status] || 'text-white/50'}`}>
-                                {statusLabel[d.status] || d.status}
-                              </span>
-                            </td>
-                            <td className="py-2 px-3 text-white/40 text-xs max-w-32 truncate">{d.comment || '—'}</td>
-                            <td className="py-2 px-3 text-white/40 text-xs">{new Date(d.created_at).toLocaleDateString('ru')}</td>
-                            <td className="py-2 px-3">
-                              {d.status === 'pending' && (
-                                <div className="flex gap-2">
-                                  <button onClick={() => confirmDeposit(d.id)} className="text-xs px-3 py-1 rounded-lg bg-green-500/10 text-green-400 hover:bg-green-500/20 transition-colors">
-                                    Подтвердить
-                                  </button>
-                                  <button onClick={() => rejectDeposit(d.id)} className="text-xs px-3 py-1 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors">
-                                    Отклонить
-                                  </button>
-                                </div>
-                              )}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
+              <AdminDepositsTab
+                deposits={deposits}
+                depositMsg={depositMsg}
+                onConfirmDeposit={confirmDeposit}
+                onRejectDeposit={rejectDeposit}
+              />
             )}
 
             {/* Оплата (QR-код) */}
