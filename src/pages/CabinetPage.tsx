@@ -21,11 +21,10 @@ export default function CabinetPage({ onGoAuth, onResetVersion }: { onGoAuth: ()
   const [saveLoading, setSaveLoading] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
   const [depositAmount, setDepositAmount] = useState('');
-  const [depositComment, setDepositComment] = useState('');
   const [depositMsg, setDepositMsg] = useState('');
   const [depositLoading, setDepositLoading] = useState(false);
   const [qrUrl, setQrUrl] = useState('');
-  const [selectedProvider, setSelectedProvider] = useState<'yookassa' | 'sberbank' | 'tinkoff' | 'manual'>('yookassa');
+  const [selectedProvider, setSelectedProvider] = useState<'yookassa' | 'sberbank' | 'tinkoff'>('yookassa');
   const [paymentSuccess, setPaymentSuccess] = useState(false);
 
   useEffect(() => {
@@ -109,17 +108,11 @@ export default function CabinetPage({ onGoAuth, onResetVersion }: { onGoAuth: ()
     setDepositLoading(true);
     setDepositMsg('');
     try {
-      if (selectedProvider === 'manual') {
-        const res = await api.content.requestDeposit(amount, depositComment);
-        setDepositMsg((res as { message?: string }).message || 'Заявка отправлена');
-        setDepositAmount(''); setDepositComment('');
-      } else {
-        const returnUrl = `${window.location.origin}${window.location.pathname}?payment=success&tab=4`;
-        const res = await api.payments.create(amount, selectedProvider, returnUrl);
-        const data = res as { confirmation_url?: string };
-        if (data.confirmation_url) {
-          window.location.href = data.confirmation_url;
-        }
+      const returnUrl = `${window.location.origin}${window.location.pathname}?payment=success&tab=4`;
+      const res = await api.payments.create(amount, selectedProvider, returnUrl);
+      const data = res as { confirmation_url?: string };
+      if (data.confirmation_url) {
+        window.location.href = data.confirmation_url;
       }
     } catch (e: unknown) {
       setDepositMsg(e instanceof Error ? e.message : 'Ошибка');
@@ -246,8 +239,6 @@ export default function CabinetPage({ onGoAuth, onResetVersion }: { onGoAuth: ()
             onSelectProvider={setSelectedProvider}
             depositAmount={depositAmount}
             onDepositAmountChange={setDepositAmount}
-            depositComment={depositComment}
-            onDepositCommentChange={setDepositComment}
             depositMsg={depositMsg}
             depositLoading={depositLoading}
             onRequestDeposit={requestDeposit}

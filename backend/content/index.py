@@ -411,6 +411,13 @@ def handler(event: dict, context) -> dict:
             if not door_data['is_active']:
                 return err('Дверь недоступна')
 
+            # Если дверь триггер — разрешена только одна покупка ключа
+            if door_data['is_trigger']:
+                with conn.cursor() as cur:
+                    cur.execute(f"SELECT COUNT(*) FROM {S}.user_keys WHERE user_id=%s AND door_id=%s", (user['id'], door_id))
+                    if cur.fetchone()[0] > 0:
+                        return err('Ключ для этой двери уже был куплен ранее')
+
             # Если дверь не триггер — нужно чтобы пользователь открыл триггер-дверь
             if not door_data['is_trigger']:
                 with conn.cursor() as cur:
@@ -466,13 +473,20 @@ def handler(event: dict, context) -> dict:
                 return err('Нужны door_id и key_id')
 
             with conn.cursor() as cur:
-                cur.execute(f"SELECT id, name, key_type, is_active, draw_at, instant_open FROM {S}.doors WHERE id=%s", (door_id,))
+                cur.execute(f"SELECT id, name, key_type, is_active, draw_at, instant_open, is_trigger FROM {S}.doors WHERE id=%s", (door_id,))
                 door = cur.fetchone()
             if not door:
                 return err('Дверь не найдена')
-            door_data = dict(zip(['id','name','key_type','is_active','draw_at','instant_open'], door))
+            door_data = dict(zip(['id','name','key_type','is_active','draw_at','instant_open','is_trigger'], door))
             if not door_data['is_active']:
                 return err('Дверь недоступна')
+
+            # Если дверь триггер — разрешено только одно открытие
+            if door_data['is_trigger']:
+                with conn.cursor() as cur:
+                    cur.execute(f"SELECT COUNT(*) FROM {S}.door_opens WHERE user_id=%s AND door_id=%s", (user['id'], door_id))
+                    if cur.fetchone()[0] > 0:
+                        return err('Вы уже открывали эту дверь ранее')
 
             if not door_data['instant_open'] and door_data['draw_at']:
                 now = datetime.now(timezone.utc)

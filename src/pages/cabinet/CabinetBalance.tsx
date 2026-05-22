@@ -5,12 +5,10 @@ interface CabinetBalanceTabProps {
   externalBalance: number;
   referralBalance: number;
   paymentSuccess: boolean;
-  selectedProvider: 'yookassa' | 'sberbank' | 'tinkoff' | 'manual';
-  onSelectProvider: (p: 'yookassa' | 'sberbank' | 'tinkoff' | 'manual') => void;
+  selectedProvider: 'yookassa' | 'sberbank' | 'tinkoff';
+  onSelectProvider: (p: 'yookassa' | 'sberbank' | 'tinkoff') => void;
   depositAmount: string;
   onDepositAmountChange: (v: string) => void;
-  depositComment: string;
-  onDepositCommentChange: (v: string) => void;
   depositMsg: string;
   depositLoading: boolean;
   onRequestDeposit: () => void;
@@ -23,14 +21,12 @@ const PROVIDERS = [
   { id: 'yookassa', label: 'ЮКасса',  icon: '💳' },
   { id: 'sberbank', label: 'Сбербанк', icon: '🟢' },
   { id: 'tinkoff',  label: 'Т-Банк',   icon: '🟡' },
-  { id: 'manual',   label: 'Вручную',  icon: '📋' },
 ] as const;
 
 export function CabinetBalanceTab({
   externalBalance, referralBalance, paymentSuccess,
   selectedProvider, onSelectProvider,
   depositAmount, onDepositAmountChange,
-  depositComment, onDepositCommentChange,
   depositMsg, depositLoading, onRequestDeposit,
   qrUrl,
   loadingTx, transactions,
@@ -49,6 +45,18 @@ export function CabinetBalanceTab({
         </div>
       )}
 
+      {/* QR-код — всегда виден если есть */}
+      {qrUrl && (
+        <div className="card-glow rounded-xl p-5 flex flex-col items-center gap-3">
+          <p className="text-xs text-white/40 uppercase tracking-wider font-rubik">Оплата по QR-коду</p>
+          <div className="flex flex-col items-center gap-2 p-4 bg-white rounded-xl">
+            <img src={qrUrl} alt="QR-код для оплаты" className="w-48 h-48 object-contain" />
+            <p className="text-black text-xs font-rubik text-center">Сканируйте для оплаты</p>
+          </div>
+          <p className="text-xs text-white/20 font-rubik text-center">После оплаты обратитесь к администратору для зачисления средств</p>
+        </div>
+      )}
+
       {/* Балансы */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="card-glow rounded-xl p-5">
@@ -58,7 +66,7 @@ export function CabinetBalanceTab({
           {/* Выбор способа оплаты */}
           <div className="mb-3">
             <p className="text-xs text-white/40 font-rubik mb-2">Способ оплаты:</p>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-3 gap-2">
               {PROVIDERS.map(p => (
                 <button key={p.id} onClick={() => onSelectProvider(p.id)}
                   className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-rubik transition-all border ${
@@ -79,31 +87,13 @@ export function CabinetBalanceTab({
                 className="flex-1 bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-white text-sm font-rubik focus:outline-none focus:border-gold-500/50 transition-colors placeholder-white/20" />
               <button onClick={onRequestDeposit} disabled={depositLoading}
                 className="btn-gold px-4 py-2 rounded-xl text-xs disabled:opacity-60 whitespace-nowrap">
-                {depositLoading ? '...' : selectedProvider === 'manual' ? 'Заявка' : 'Оплатить'}
+                {depositLoading ? '...' : 'Оплатить'}
               </button>
             </div>
-            {selectedProvider === 'manual' && (
-              <input value={depositComment} onChange={e => onDepositCommentChange(e.target.value)}
-                placeholder="Комментарий (необязательно)"
-                className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-white text-sm font-rubik focus:outline-none focus:border-gold-500/50 transition-colors placeholder-white/20" />
-            )}
           </div>
 
-          {depositMsg && <p className="text-xs mt-2 font-rubik" style={{ color: depositMsg.includes('Заявка') || depositMsg.includes('успеш') ? '#4ade80' : '#f87171' }}>{depositMsg}</p>}
-
-          {selectedProvider !== 'manual' && (
-            <p className="text-xs text-white/20 mt-2 font-rubik">Вы будете перенаправлены на страницу оплаты. Деньги зачислятся автоматически.</p>
-          )}
-
-          {selectedProvider === 'manual' && qrUrl && (
-            <div className="mt-3 flex flex-col items-center gap-2 p-4 bg-white rounded-xl w-fit mx-auto">
-              <img src={qrUrl} alt="QR-код для оплаты" className="w-48 h-48 object-contain" />
-              <p className="text-black text-xs font-rubik text-center">Сканируйте для оплаты</p>
-            </div>
-          )}
-          {selectedProvider === 'manual' && (
-            <p className="text-xs text-white/20 mt-2 font-rubik">После оплаты отправьте заявку — администратор зачислит средства на счёт</p>
-          )}
+          {depositMsg && <p className="text-xs mt-2 font-rubik" style={{ color: depositMsg.includes('успеш') ? '#4ade80' : '#f87171' }}>{depositMsg}</p>}
+          <p className="text-xs text-white/20 mt-2 font-rubik">Вы будете перенаправлены на страницу оплаты. Деньги зачислятся автоматически.</p>
         </div>
         <div className="card-glow rounded-xl p-5" style={{ borderColor: 'rgba(74,222,128,0.15)' }}>
           <div className="text-xs text-green-400/70 uppercase tracking-wider font-rubik mb-2">Реф. бонусы (внутренний)</div>

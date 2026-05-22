@@ -195,7 +195,7 @@ function VersionPicker({ onPick }: { onPick: (v: 'mobile' | 'desktop') => void }
         <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-gold-600 to-gold-400 flex items-center justify-center mx-auto mb-5 shadow-lg shadow-gold-500/30">
           <span className="text-black font-bold text-lg font-oswald">GD</span>
         </div>
-        <h2 className="font-oswald text-2xl text-white font-bold mb-2 tracking-wide">Golden Door</h2>
+        <h2 className="font-oswald text-2xl text-white font-bold mb-2 tracking-wide">Золотая Дверь</h2>
         <p className="font-rubik text-white/40 text-sm mb-8">Выберите удобный формат просмотра</p>
         <div className="grid grid-cols-2 gap-3">
           <button onClick={() => onPick('mobile')}
