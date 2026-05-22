@@ -28,10 +28,13 @@ export default function AuthPage({ onSuccess, initialRef = '' }: AuthPageProps) 
 
   const set = (k: string, v: string) => setForm(prev => ({ ...prev, [k]: v }));
 
+  const [loadingMsg, setLoadingMsg] = useState('');
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setLoading(true);
+    setLoadingMsg(mode === 'login' ? 'Выполняем вход...' : 'Создаём аккаунт...');
     try {
       if (mode === 'login') {
         await login(form.email, form.password);
@@ -48,9 +51,16 @@ export default function AuthPage({ onSuccess, initialRef = '' }: AuthPageProps) 
       }
       onSuccess();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Ошибка');
+      const msg = e instanceof Error ? e.message : 'Ошибка';
+      // Если сервер не ответил — предлагаем повторить
+      if (msg.includes('не отвечает') || msg.includes('подключиться')) {
+        setError('Сервер запускается, попробуйте ещё раз через 5-10 секунд');
+      } else {
+        setError(msg);
+      }
     } finally {
       setLoading(false);
+      setLoadingMsg('');
     }
   };
 
@@ -151,8 +161,13 @@ export default function AuthPage({ onSuccess, initialRef = '' }: AuthPageProps) 
 
               <button type="submit" disabled={loading}
                 className="btn-gold w-full py-4 rounded-xl text-sm mt-2 disabled:opacity-60 disabled:cursor-not-allowed">
-                {loading ? '⏳ Загрузка...' : mode === 'login' ? 'Войти' : 'Создать аккаунт'}
+                {loading ? (loadingMsg || '⏳ Подключаемся...') : mode === 'login' ? 'Войти' : 'Создать аккаунт'}
               </button>
+              {loading && (
+                <p className="text-xs text-white/30 text-center font-rubik mt-1">
+                  Первый запуск может занять до 15 секунд
+                </p>
+              )}
             </form>
 
             {mode === 'register' && (

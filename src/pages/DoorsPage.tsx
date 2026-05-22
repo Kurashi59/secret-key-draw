@@ -77,7 +77,15 @@ function DoorCard({
   const [wonPrize, setWonPrize] = useState('');
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState('');
+  const [buyCooldown, setBuyCooldown] = useState(0);
   const rarity = RARITY[door.rarity] || RARITY.common;
+
+  // Таймер кулдауна (10 секунд после покупки)
+  useEffect(() => {
+    if (buyCooldown <= 0) return;
+    const timer = setTimeout(() => setBuyCooldown(c => c - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [buyCooldown]);
 
   const myKeys = userKeys.filter(k => k.door_id === door.id && !k.is_used);
   const hasKey = myKeys.length > 0;
@@ -88,11 +96,14 @@ function DoorCard({
     e.stopPropagation();
     if (!user) { onNeedAuth(); return; }
     if (isLocked) { setMsg('Сначала откройте стартовую дверь'); return; }
+    if (buyCooldown > 0) { setMsg(`Подождите ${buyCooldown} сек.`); return; }
     setLoading(true); setMsg('');
     try {
       const res = await api.content.buyKey(door.id);
       setMsg(`✓ ${(res as { key_name?: string }).key_name || 'Ключ'} куплен`);
-      await refreshUser(); onBought();
+      setBuyCooldown(10);
+      await refreshUser();
+      onBought();
     } catch (err: unknown) {
       setMsg(err instanceof Error ? err.message : 'Ошибка покупки');
     } finally { setLoading(false); }
@@ -109,11 +120,13 @@ function DoorCard({
     setOpening(true); setLoading(true); setMsg('');
     try {
       const res = await api.content.openDoor(door.id, key.id);
+      const prize = (res as { prize?: string }).prize || 'Приз';
       setTimeout(() => {
-        setWonPrize((res as { prize?: string }).prize || 'Приз');
+        setWonPrize(prize);
         setRevealed(true);
-        onOpened((res as { prize?: string }).prize || 'Приз');
-        refreshUser(); onBought();
+        onOpened(prize);
+        refreshUser();
+        onBought();
       }, 1300);
     } catch (err: unknown) {
       setOpening(false);
@@ -206,9 +219,9 @@ function DoorCard({
         )}
 
         <div className="flex gap-2">
-          <button onClick={buyKey} disabled={loading || isLocked}
+          <button onClick={buyKey} disabled={loading || isLocked || buyCooldown > 0}
             className="flex-1 py-2 rounded-lg text-xs font-oswald border border-white/20 text-white/60 hover:border-gold-500/40 hover:text-gold-400 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
-            {loading ? '...' : (isLocked ? '🔒 Заблокировано' : `Купить ключ`)}
+            {loading ? '...' : isLocked ? '🔒 Заблокировано' : buyCooldown > 0 ? `⏳ ${buyCooldown}с` : 'Купить ключ'}
           </button>
           <button onClick={openDoor} disabled={loading || !hasKey || !canOpen || revealed || door.prizes_left === 0 || isLocked}
             className={`flex-1 py-2 rounded-lg text-xs font-oswald transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
