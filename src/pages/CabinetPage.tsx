@@ -66,6 +66,8 @@ export default function CabinetPage({ onGoAuth }: { onGoAuth: () => void }) {
   const [depositLoading, setDepositLoading] = useState(false);
   const [qrUrl, setQrUrl] = useState('');
   const [showQr, setShowQr] = useState(false);
+  const [selectedProvider, setSelectedProvider] = useState<'yookassa' | 'sberbank' | 'tinkoff' | 'manual'>('yookassa');
+  const [paymentSuccess, setPaymentSuccess] = useState(false);
 
   useEffect(() => {
     if (user) setProfileForm({
@@ -98,6 +100,16 @@ export default function CabinetPage({ onGoAuth }: { onGoAuth: () => void }) {
       api.content.getMyKeys().then(k => setMyKeys(k as unknown as UserKey[])).catch(() => {}).finally(() => setLoadingKeys(false));
     }
   }, [activeTab, user]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('payment') === 'success') {
+      setPaymentSuccess(true);
+      setActiveTab(4);
+      window.history.replaceState({}, '', window.location.pathname);
+      setTimeout(() => setPaymentSuccess(false), 6000);
+    }
+  }, []);
 
   if (!user) {
     return (
@@ -138,9 +150,18 @@ export default function CabinetPage({ onGoAuth }: { onGoAuth: () => void }) {
     setDepositLoading(true);
     setDepositMsg('');
     try {
-      const res = await api.content.requestDeposit(amount, depositComment);
-      setDepositMsg((res as { message?: string }).message || 'Заявка отправлена');
-      setDepositAmount(''); setDepositComment('');
+      if (selectedProvider === 'manual') {
+        const res = await api.content.requestDeposit(amount, depositComment);
+        setDepositMsg((res as { message?: string }).message || 'Заявка отправлена');
+        setDepositAmount(''); setDepositComment('');
+      } else {
+        const returnUrl = `${window.location.origin}${window.location.pathname}?payment=success&tab=4`;
+        const res = await api.payments.create(amount, selectedProvider, returnUrl);
+        const data = res as { confirmation_url?: string };
+        if (data.confirmation_url) {
+          window.location.href = data.confirmation_url;
+        }
+      }
     } catch (e: unknown) {
       setDepositMsg(e instanceof Error ? e.message : 'Ошибка');
     } finally {
@@ -337,27 +358,70 @@ export default function CabinetPage({ onGoAuth }: { onGoAuth: () => void }) {
         {/* Баланс и транзакции */}
         {activeTab === 4 && (
           <div className="space-y-4 fade-up-3">
+
+            {/* Успешная оплата */}
+            {paymentSuccess && (
+              <div className="rounded-xl p-4 flex items-center gap-3" style={{ background: 'rgba(74,222,128,0.1)', border: '1px solid rgba(74,222,128,0.3)' }}>
+                <Icon name="CheckCircle" size={20} className="text-green-400 shrink-0" />
+                <div>
+                  <p className="text-green-400 font-oswald text-sm">Оплата прошла успешно!</p>
+                  <p className="text-white/50 font-rubik text-xs">Средства зачислены на ваш счёт автоматически</p>
+                </div>
+              </div>
+            )}
+
             {/* Балансы */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="card-glow rounded-xl p-5">
                 <div className="text-xs text-white/40 uppercase tracking-wider font-rubik mb-2">Внешний счёт (с карты)</div>
                 <div className="font-oswald text-3xl text-gold-400 font-bold mb-4">{(user.external_balance || 0).toLocaleString()} ₽</div>
+
+                {/* Выбор способа оплаты */}
+                <div className="mb-3">
+                  <p className="text-xs text-white/40 font-rubik mb-2">Способ оплаты:</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      { id: 'yookassa', label: 'ЮКасса', icon: '💳' },
+                      { id: 'sberbank', label: 'Сбербанк', icon: '🟢' },
+                      { id: 'tinkoff',  label: 'Т-Банк',   icon: '🟡' },
+                      { id: 'manual',   label: 'Вручную',  icon: '📋' },
+                    ].map(p => (
+                      <button key={p.id} onClick={() => setSelectedProvider(p.id as typeof selectedProvider)}
+                        className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-rubik transition-all border ${
+                          selectedProvider === p.id
+                            ? 'bg-gold-500/20 border-gold-500/50 text-gold-400'
+                            : 'border-white/10 text-white/40 hover:border-white/20 hover:text-white/60'
+                        }`}>
+                        <span>{p.icon}</span>{p.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 <div className="space-y-2">
                   <div className="flex gap-2">
                     <input type="number" value={depositAmount} onChange={e => setDepositAmount(e.target.value)}
                       placeholder="Сумма (мин. 100 ₽)" min={100}
                       className="flex-1 bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-white text-sm font-rubik focus:outline-none focus:border-gold-500/50 transition-colors placeholder-white/20" />
                     <button onClick={requestDeposit} disabled={depositLoading}
-                      className="btn-gold px-4 py-2 rounded-xl text-xs disabled:opacity-60">
-                      {depositLoading ? '...' : 'Отправить заявку'}
+                      className="btn-gold px-4 py-2 rounded-xl text-xs disabled:opacity-60 whitespace-nowrap">
+                      {depositLoading ? '...' : selectedProvider === 'manual' ? 'Заявка' : 'Оплатить'}
                     </button>
                   </div>
-                  <input value={depositComment} onChange={e => setDepositComment(e.target.value)}
-                    placeholder="Комментарий (необязательно)" 
-                    className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-white text-sm font-rubik focus:outline-none focus:border-gold-500/50 transition-colors placeholder-white/20" />
+                  {selectedProvider === 'manual' && (
+                    <input value={depositComment} onChange={e => setDepositComment(e.target.value)}
+                      placeholder="Комментарий (необязательно)"
+                      className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-white text-sm font-rubik focus:outline-none focus:border-gold-500/50 transition-colors placeholder-white/20" />
+                  )}
                 </div>
-                {depositMsg && <p className="text-xs mt-2 font-rubik" style={{ color: depositMsg.includes('Заявка') ? '#4ade80' : '#f87171' }}>{depositMsg}</p>}
-                {qrUrl && (
+
+                {depositMsg && <p className="text-xs mt-2 font-rubik" style={{ color: depositMsg.includes('Заявка') || depositMsg.includes('успеш') ? '#4ade80' : '#f87171' }}>{depositMsg}</p>}
+
+                {selectedProvider !== 'manual' && (
+                  <p className="text-xs text-white/20 mt-2 font-rubik">Вы будете перенаправлены на страницу оплаты. Деньги зачислятся автоматически.</p>
+                )}
+
+                {selectedProvider === 'manual' && qrUrl && (
                   <div className="mt-3">
                     <button onClick={() => setShowQr(!showQr)} className="flex items-center gap-2 text-xs text-gold-400 font-rubik hover:text-gold-300 transition-colors">
                       <Icon name="QrCode" size={14} />
@@ -371,8 +435,9 @@ export default function CabinetPage({ onGoAuth }: { onGoAuth: () => void }) {
                     )}
                   </div>
                 )}
-                {!qrUrl && null}
-                <p className="text-xs text-white/20 mt-2 font-rubik">После оплаты отправьте заявку — администратор зачислит средства на счёт</p>
+                {selectedProvider === 'manual' && (
+                  <p className="text-xs text-white/20 mt-2 font-rubik">После оплаты отправьте заявку — администратор зачислит средства на счёт</p>
+                )}
               </div>
               <div className="card-glow rounded-xl p-5" style={{ borderColor: 'rgba(74,222,128,0.15)' }}>
                 <div className="text-xs text-green-400/70 uppercase tracking-wider font-rubik mb-2">Реф. бонусы (внутренний)</div>

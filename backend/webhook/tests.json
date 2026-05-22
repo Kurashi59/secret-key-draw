@@ -1,0 +1,39 @@
+{
+  "tests": [
+    {
+      "name": "Health check",
+      "method": "GET",
+      "path": "/",
+      "expectedStatus": 200,
+      "expectedBody": {"status": "ok", "service": "webhook"},
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Unknown provider",
+      "method": "POST",
+      "path": "/?provider=unknown",
+      "body": {},
+      "expectedStatus": 404,
+      "expectedBody": {"error": "Неизвестный провайдер"},
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "YooKassa non-succeeded event",
+      "method": "POST",
+      "path": "/?provider=yookassa",
+      "body": {"event": "payment.created", "object": {"id": "test-123"}},
+      "expectedStatus": 200,
+      "expectedBody": {"ok": true},
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Tinkoff non-confirmed status",
+      "method": "POST",
+      "path": "/?provider=tinkoff",
+      "body": {"Status": "AUTHORIZED", "PaymentId": "999", "TerminalKey": "test"},
+      "expectedStatus": 200,
+      "expectedBody": {"ok": true},
+      "bodyMatcher": "partial"
+    }
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "tests": [
+    {
+      "name": "Health check",
+      "method": "GET",
+      "path": "/",
+      "expectedStatus": 200,
+      "expectedBody": {"status": "ok", "service": "payments"},
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Create payment - no auth",
+      "method": "POST",
+      "path": "/?action=create_payment",
+      "body": {"amount": 500, "provider": "yookassa"},
+      "expectedStatus": 401,
+      "expectedBody": {"error": "Требуется авторизация"},
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Get payments history - no auth",
+      "method": "GET",
+      "path": "/?action=get_payments_history",
+      "expectedStatus": 401,
+      "expectedBody": {"error": "Требуется авторизация"},
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Admin get payments - no auth",
+      "method": "POST",
+      "path": "/?action=admin_get_payments",
+      "body": {},
+      "expectedStatus": 401,
+      "expectedBody": {"error": "Требуется авторизация"},
+      "bodyMatcher": "partial"
+    }
+  ]
+}

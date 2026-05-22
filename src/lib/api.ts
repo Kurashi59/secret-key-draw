@@ -1,5 +1,6 @@
 const AUTH_URL = 'https://functions.poehali.dev/7a0bfbbe-e6dc-439b-8068-9b9b23998b5a';
 const CONTENT_URL = 'https://functions.poehali.dev/9f14e54c-c915-4e37-94ac-1d7812c3c407';
+const PAYMENTS_URL = 'https://functions.poehali.dev/83e924d9-eafe-4909-9221-fc05ab9f1aeb';
 
 function getToken(): string {
   return localStorage.getItem('gd_token') || '';
@@ -63,6 +64,7 @@ async function request(url: string, options: RequestInit = {}, retries = 5): Pro
 
 const a = (action: string) => `${AUTH_URL}?action=${action}`;
 const c = (action: string) => `${CONTENT_URL}?action=${action}`;
+const p = (action: string) => `${PAYMENTS_URL}?action=${action}`;
 
 export const api = {
   auth: {
@@ -149,5 +151,16 @@ export const api = {
       request(c('admin_confirm_deposit'), { method: 'POST', body: JSON.stringify({ request_id }) }),
     adminRejectDeposit: (request_id: number) =>
       request(c('admin_reject_deposit'), { method: 'POST', body: JSON.stringify({ request_id }) }),
+  },
+
+  payments: {
+    create: (amount: number, provider: 'yookassa' | 'sberbank' | 'tinkoff', return_url: string) =>
+      request(p('create_payment'), { method: 'POST', body: JSON.stringify({ amount, provider, return_url }) }),
+    getStatus: (payment_id: number) =>
+      request(p('get_payment_status') + `&payment_id=${payment_id}`),
+    getHistory: () =>
+      request(p('get_payments_history')),
+    adminGetAll: () =>
+      request(p('admin_get_payments'), { method: 'POST', body: JSON.stringify({}) }),
   },
 };
