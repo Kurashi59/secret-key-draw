@@ -16,6 +16,7 @@ interface CabinetSettingsTabProps {
   saveMsg: string;
   onSave: (e: React.FormEvent) => void;
   onLogout: () => void;
+  onResetVersion: () => void;
 }
 
 export function CabinetReferralsTab({
@@ -51,7 +52,7 @@ export function CabinetReferralsTab({
 }
 
 export function CabinetSettingsTab({
-  profileForm, onProfileChange, saveLoading, saveMsg, onSave, onLogout,
+  profileForm, onProfileChange, saveLoading, saveMsg, onSave, onLogout, onResetVersion,
 }: CabinetSettingsTabProps) {
   const fields = [
     { key: 'name',       label: 'Отображаемое имя',   placeholder: 'Александр',                    type: 'text' },
@@ -83,6 +84,15 @@ export function CabinetSettingsTab({
           </button>
         </div>
       </form>
+
+      <div className="mt-6 pt-5 border-t border-white/5">
+        <p className="text-xs text-white/30 font-rubik mb-3">Версия отображения сайта</p>
+        <button type="button" onClick={onResetVersion}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-white/10 text-white/40 text-xs font-rubik hover:border-white/20 hover:text-white/60 transition-all">
+          <Icon name="Monitor" size={14} />
+          Изменить версию сайта (мобильная / компьютерная)
+        </button>
+      </div>
     </div>
   );
 }

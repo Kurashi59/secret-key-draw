@@ -7,7 +7,7 @@ import { CabinetKeysTab, CabinetHistoryTab } from './cabinet/CabinetKeysHistory'
 import { CabinetBalanceTab } from './cabinet/CabinetBalance';
 import { CabinetReferralsTab, CabinetSettingsTab } from './cabinet/CabinetReferralsSettings';
 
-export default function CabinetPage({ onGoAuth }: { onGoAuth: () => void }) {
+export default function CabinetPage({ onGoAuth, onResetVersion }: { onGoAuth: () => void; onResetVersion: () => void }) {
   const { user, logout, refreshUser } = useAuth();
   const [activeTab, setActiveTab] = useState(0);
   const [history, setHistory] = useState<HistoryItem[]>([]);
@@ -266,6 +266,7 @@ export default function CabinetPage({ onGoAuth }: { onGoAuth: () => void }) {
             saveMsg={saveMsg}
             onSave={saveProfile}
             onLogout={logout}
+            onResetVersion={onResetVersion}
           />
         )}
       </div>

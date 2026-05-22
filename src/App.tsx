@@ -276,7 +276,7 @@ function AppInner() {
       case "doors":
         return <DoorsPage onNeedAuth={() => setActivePage("auth")} />;
       case "cabinet":
-        return <CabinetPage onGoAuth={() => setActivePage("auth")} />;
+        return <CabinetPage onGoAuth={() => setActivePage("auth")} onResetVersion={() => { localStorage.removeItem('gd_view_version'); setViewVersion(null); }} />;
       case "admin":
         return <AdminPage onGoAuth={() => setActivePage("auth")} />;
       case "about":
