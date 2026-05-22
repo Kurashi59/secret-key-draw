@@ -382,16 +382,18 @@ def handler(event: dict, context) -> dict:
                 cur.execute(f"""
                     SELECT uk.id, uk.door_id,
                            COALESCE(uk.key_type, 'common') as key_type,
-                           COALESCE(uk.key_name, 'Стандартный ключ') as key_name,
+                           COALESCE(uk.key_name, d.key_name, 'Стандартный ключ') as key_name,
                            COALESCE(uk.is_used, uk.used, FALSE) as is_used,
-                           uk.purchased_at,
-                           d.name as door_name
+                           COALESCE(uk.purchased_at, NOW()) as purchased_at,
+                           d.name as door_name,
+                           COALESCE(d.color, '#6b7280') as door_color,
+                           d.is_trigger
                     FROM {S}.user_keys uk
                     JOIN {S}.doors d ON d.id = uk.door_id
                     WHERE uk.user_id=%s
-                    ORDER BY uk.purchased_at DESC""", (user['id'],))
+                    ORDER BY uk.purchased_at DESC NULLS LAST""", (user['id'],))
                 rows = cur.fetchall()
-            keys_list = ['id','door_id','key_type','key_name','is_used','purchased_at','door_name']
+            keys_list = ['id','door_id','key_type','key_name','is_used','purchased_at','door_name','door_color','is_trigger']
             return ok([dict(zip(keys_list, r)) for r in rows])
 
         if action == 'buy_key':
@@ -571,9 +573,9 @@ def handler(event: dict, context) -> dict:
             if not user:
                 return err('Требуется авторизация', 401)
             with conn.cursor() as cur:
-                cur.execute(f"""SELECT do.id, do.prize_won, do.created_at, d.name, d.prize_icon
-                    FROM {S}.door_opens do JOIN {S}.doors d ON d.id=do.door_id
-                    WHERE do.user_id=%s ORDER BY do.created_at DESC LIMIT 50""", (user['id'],))
+                cur.execute(f"""SELECT op.id, op.prize_won, op.created_at, d.name, COALESCE(d.prize_icon, '🎁')
+                    FROM {S}.door_opens op JOIN {S}.doors d ON d.id=op.door_id
+                    WHERE op.user_id=%s ORDER BY op.created_at DESC LIMIT 50""", (user['id'],))
                 rows = cur.fetchall()
             keys_list = ['id','prize_won','created_at','door_name','prize_icon']
             return ok([dict(zip(keys_list, r)) for r in rows])

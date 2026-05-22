@@ -40,4 +40,6 @@ export interface UserKey {
   is_used: boolean;
   purchased_at: string;
   door_name: string;
+  door_color?: string;
+  is_trigger?: boolean;
 }
