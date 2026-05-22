@@ -104,22 +104,22 @@ export default function AuthPage({ onSuccess, initialRef = '' }: AuthPageProps) 
               {mode === 'register' && (
                 <>
                   <div>
-                    <label className="block text-xs text-white/40 font-rubik uppercase tracking-wider mb-2">Имя (отображаемое)</label>
+                    <label className="block text-xs text-black font-rubik uppercase tracking-wider mb-2">Имя (отображаемое)</label>
                     <input value={form.name} onChange={e => set('name', e.target.value)}
                       placeholder="Александр" required className={inputCls} />
                   </div>
                   <div>
-                    <label className="block text-xs text-white/40 font-rubik uppercase tracking-wider mb-2">ФИО полностью</label>
+                    <label className="block text-xs text-black font-rubik uppercase tracking-wider mb-2">ФИО полностью</label>
                     <input value={form.full_name} onChange={e => set('full_name', e.target.value)}
                       placeholder="Иванов Александр Петрович" className={inputCls} />
                   </div>
                   <div>
-                    <label className="block text-xs text-white/40 font-rubik uppercase tracking-wider mb-2">Телефон <span className="text-red-400">*</span></label>
+                    <label className="block text-xs text-black font-rubik uppercase tracking-wider mb-2">Телефон <span className="text-red-400">*</span></label>
                     <input type="tel" value={form.phone} onChange={e => set('phone', e.target.value)}
                       placeholder="+7 900 000-00-00" required className={inputCls} />
                   </div>
                   <div>
-                    <label className="block text-xs text-white/40 font-rubik uppercase tracking-wider mb-2">Дата рождения <span className="text-red-400">*</span></label>
+                    <label className="block text-xs text-black font-rubik uppercase tracking-wider mb-2">Дата рождения <span className="text-red-400">*</span></label>
                     <input type="date" value={form.birth_date} onChange={e => set('birth_date', e.target.value)}
                       required className={inputCls} />
                   </div>
@@ -127,21 +127,21 @@ export default function AuthPage({ onSuccess, initialRef = '' }: AuthPageProps) 
               )}
 
               <div>
-                <label className="block text-xs text-white/40 font-rubik uppercase tracking-wider mb-2">Email</label>
+                <label className="block text-xs text-black font-rubik uppercase tracking-wider mb-2">Email</label>
                 <input type="email" value={form.email} onChange={e => set('email', e.target.value)}
                   placeholder="alex@mail.ru" required className={inputCls} />
               </div>
 
               <div>
-                <label className="block text-xs text-white/40 font-rubik uppercase tracking-wider mb-2">Пароль</label>
+                <label className="block text-xs text-black font-rubik uppercase tracking-wider mb-2">Пароль</label>
                 <input type="password" value={form.password} onChange={e => set('password', e.target.value)}
                   placeholder="••••••••" required className={inputCls} />
               </div>
 
               {mode === 'register' && (
                 <div>
-                  <label className="block text-xs text-white/40 font-rubik uppercase tracking-wider mb-2">
-                    Реферальный код <span className="text-white/30">(необязательно)</span>
+                  <label className="block text-xs text-black font-rubik uppercase tracking-wider mb-2">
+                    Реферальный код <span className="text-black/50">(необязательно)</span>
                   </label>
                   <div className="relative">
                     <input value={form.referral_code} onChange={e => set('referral_code', e.target.value.toUpperCase())}
