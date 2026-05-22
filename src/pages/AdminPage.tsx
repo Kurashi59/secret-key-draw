@@ -351,7 +351,6 @@ export default function AdminPage({ onGoAuth }: { onGoAuth: () => void }) {
     setPaymentSaving(true); setPaymentMsg('');
     try {
       if (qrPendingBase64) {
-        // Загружаем файл через S3
         const res = await api.content.uploadQr(qrPendingBase64);
         const uploaded = res as { url?: string };
         if (uploaded.url) {
@@ -359,8 +358,9 @@ export default function AdminPage({ onGoAuth }: { onGoAuth: () => void }) {
           setQrPendingBase64('');
         }
       } else if (qrUrl && !qrUrl.startsWith('data:')) {
-        // Просто сохраняем URL
         await api.content.updatePaymentSettings({ qr_image_url: qrUrl });
+      } else if (!qrUrl) {
+        await api.content.updatePaymentSettings({ qr_image_url: '' });
       }
       setPaymentMsg('QR-код сохранён!');
     } catch (e: unknown) { setPaymentMsg(e instanceof Error ? e.message : 'Ошибка'); }

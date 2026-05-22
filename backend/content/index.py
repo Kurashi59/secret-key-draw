@@ -203,6 +203,7 @@ def handler(event: dict, context) -> dict:
                            COUNT(CASE WHEN dp.is_won=FALSE THEN 1 END) as prizes_left
                     FROM {S}.doors d
                     LEFT JOIN {S}.door_prizes dp ON dp.door_id = d.id
+                    WHERE NOT (d.is_active = FALSE AND d.name LIKE '[УДАЛЕНА]%%')
                     GROUP BY d.id ORDER BY d.sort_order""")
                 rows = cur.fetchall()
             keys = ['id','name','prize','prize_icon','key_price','rarity','keys_sold',
@@ -271,7 +272,7 @@ def handler(event: dict, context) -> dict:
                 return err('Нет door_id')
             user = get_user_by_token(conn, token)
             with conn.cursor() as cur:
-                cur.execute(f"""SELECT id, name, description, is_won, won_by_user_id, won_at, sort_order,
+                cur.execute(f"""SELECT id, name, description, is_won, won_by, won_at, sort_order,
                     COALESCE(quantity, 1) as quantity
                     FROM {S}.door_prizes WHERE door_id=%s ORDER BY sort_order, id""", (door_id,))
                 rows = cur.fetchall()
@@ -310,7 +311,7 @@ def handler(event: dict, context) -> dict:
             if not prize_id:
                 return err('Нет prize_id')
             with conn.cursor() as cur:
-                cur.execute(f"UPDATE {S}.door_prizes SET is_won=TRUE WHERE id=%s", (prize_id,))
+                cur.execute(f"DELETE FROM {S}.door_prizes WHERE id=%s AND is_won=FALSE", (prize_id,))
             conn.commit()
             return ok({'message': 'Приз удалён'})
 
@@ -523,7 +524,7 @@ def handler(event: dict, context) -> dict:
                 if prize_row:
                     prize_id_val, prize_name = prize_row
                     with conn.cursor() as cur:
-                        cur.execute(f"UPDATE {S}.door_prizes SET is_won=TRUE, won_by_user_id=%s, won_at=NOW() WHERE id=%s",
+                        cur.execute(f"UPDATE {S}.door_prizes SET is_won=TRUE, won_by=%s, won_at=NOW() WHERE id=%s",
                                     (user['id'], prize_id_val))
                 else:
                     prize_name = 'Участник розыгрыша'

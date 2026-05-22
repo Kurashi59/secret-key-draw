@@ -364,13 +364,14 @@ export default function CabinetPage({ onGoAuth }: { onGoAuth: () => void }) {
                       {showQr ? 'Скрыть QR-код для оплаты' : 'Показать QR-код для оплаты'}
                     </button>
                     {showQr && (
-                      <div className="mt-3 flex flex-col items-center gap-2 p-4 bg-white rounded-xl w-fit">
+                      <div className="mt-3 flex flex-col items-center gap-2 p-4 bg-white rounded-xl w-fit mx-auto">
                         <img src={qrUrl} alt="QR-код для оплаты" className="w-48 h-48 object-contain" />
                         <p className="text-black text-xs font-rubik text-center">Сканируйте для оплаты</p>
                       </div>
                     )}
                   </div>
                 )}
+                {!qrUrl && null}
                 <p className="text-xs text-white/20 mt-2 font-rubik">После оплаты отправьте заявку — администратор зачислит средства на счёт</p>
               </div>
               <div className="card-glow rounded-xl p-5" style={{ borderColor: 'rgba(74,222,128,0.15)' }}>
