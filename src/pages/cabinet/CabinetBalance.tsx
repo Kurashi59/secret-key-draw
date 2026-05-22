@@ -15,8 +15,6 @@ interface CabinetBalanceTabProps {
   depositLoading: boolean;
   onRequestDeposit: () => void;
   qrUrl: string;
-  showQr: boolean;
-  onToggleQr: () => void;
   loadingTx: boolean;
   transactions: Transaction[];
 }
@@ -34,7 +32,7 @@ export function CabinetBalanceTab({
   depositAmount, onDepositAmountChange,
   depositComment, onDepositCommentChange,
   depositMsg, depositLoading, onRequestDeposit,
-  qrUrl, showQr, onToggleQr,
+  qrUrl,
   loadingTx, transactions,
 }: CabinetBalanceTabProps) {
   return (
@@ -98,17 +96,9 @@ export function CabinetBalanceTab({
           )}
 
           {selectedProvider === 'manual' && qrUrl && (
-            <div className="mt-3">
-              <button onClick={onToggleQr} className="flex items-center gap-2 text-xs text-gold-400 font-rubik hover:text-gold-300 transition-colors">
-                <Icon name="QrCode" size={14} />
-                {showQr ? 'Скрыть QR-код для оплаты' : 'Показать QR-код для оплаты'}
-              </button>
-              {showQr && (
-                <div className="mt-3 flex flex-col items-center gap-2 p-4 bg-white rounded-xl w-fit mx-auto">
-                  <img src={qrUrl} alt="QR-код для оплаты" className="w-48 h-48 object-contain" />
-                  <p className="text-black text-xs font-rubik text-center">Сканируйте для оплаты</p>
-                </div>
-              )}
+            <div className="mt-3 flex flex-col items-center gap-2 p-4 bg-white rounded-xl w-fit mx-auto">
+              <img src={qrUrl} alt="QR-код для оплаты" className="w-48 h-48 object-contain" />
+              <p className="text-black text-xs font-rubik text-center">Сканируйте для оплаты</p>
             </div>
           )}
           {selectedProvider === 'manual' && (

@@ -31,7 +31,7 @@ export default function HomePage({ onGoToDoors }: { onGoToDoors: () => void }) {
   }, []);
 
   const c = {
-    title: content.hero_title?.value || 'GOLDEN DOOR',
+    title: content.hero_title?.value || 'ЗОЛОТАЯ ДВЕРЬ',
     subtitle: content.hero_subtitle?.value || 'За каждой дверью — реальный приз. Купи ключ, открой дверь, забери выигрыш.',
     cta: content.hero_cta?.value || 'Купить ключ',
     participants: content.stats_participants?.value || '12 847',

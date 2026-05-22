@@ -187,9 +187,47 @@ function NavBar({
   );
 }
 
+function VersionPicker({ onPick }: { onPick: (v: 'mobile' | 'desktop') => void }) {
+  return (
+    <div className="fixed inset-0 z-[999] flex items-center justify-center px-4"
+      style={{ background: 'rgba(7,9,15,0.97)', backdropFilter: 'blur(8px)' }}>
+      <div className="max-w-sm w-full text-center">
+        <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-gold-600 to-gold-400 flex items-center justify-center mx-auto mb-5 shadow-lg shadow-gold-500/30">
+          <span className="text-black font-bold text-lg font-oswald">GD</span>
+        </div>
+        <h2 className="font-oswald text-2xl text-white font-bold mb-2 tracking-wide">Golden Door</h2>
+        <p className="font-rubik text-white/40 text-sm mb-8">Выберите удобный формат просмотра</p>
+        <div className="grid grid-cols-2 gap-3">
+          <button onClick={() => onPick('mobile')}
+            className="flex flex-col items-center gap-3 p-5 rounded-2xl border border-white/10 hover:border-gold-500/40 hover:bg-gold-500/5 transition-all group">
+            <span className="text-3xl">📱</span>
+            <div>
+              <div className="font-oswald text-white text-sm tracking-wider group-hover:text-gold-400 transition-colors">Мобильная</div>
+              <div className="font-rubik text-white/30 text-xs mt-0.5">Для телефона</div>
+            </div>
+          </button>
+          <button onClick={() => onPick('desktop')}
+            className="flex flex-col items-center gap-3 p-5 rounded-2xl border border-gold-500/30 bg-gold-500/5 hover:border-gold-500/60 hover:bg-gold-500/10 transition-all group">
+            <span className="text-3xl">🖥️</span>
+            <div>
+              <div className="font-oswald text-gold-400 text-sm tracking-wider">Компьютерная</div>
+              <div className="font-rubik text-white/30 text-xs mt-0.5">Для ПК</div>
+            </div>
+          </button>
+        </div>
+        <p className="font-rubik text-white/20 text-xs mt-5">Можно изменить позже в настройках</p>
+      </div>
+    </div>
+  );
+}
+
 function AppInner() {
   const [activePage, setActivePage] = useState("home");
   const [initialRef, setInitialRef] = useState("");
+  const [viewVersion, setViewVersion] = useState<'mobile' | 'desktop' | null>(() => {
+    const saved = localStorage.getItem('gd_view_version');
+    return (saved === 'mobile' || saved === 'desktop') ? saved : null;
+  });
   const { loading } = useAuth();
 
   useEffect(() => {
@@ -201,6 +239,15 @@ function AppInner() {
       window.history.replaceState({}, "", window.location.pathname);
     }
   }, []);
+
+  const handleVersionPick = (v: 'mobile' | 'desktop') => {
+    localStorage.setItem('gd_view_version', v);
+    setViewVersion(v);
+    if (v === 'mobile') {
+      const meta = document.querySelector('meta[name="viewport"]');
+      if (meta) meta.setAttribute('content', 'width=375, initial-scale=1');
+    }
+  };
 
   if (loading) {
     return (
@@ -216,6 +263,10 @@ function AppInner() {
         </div>
       </div>
     );
+  }
+
+  if (viewVersion === null) {
+    return <VersionPicker onPick={handleVersionPick} />;
   }
 
   const renderPage = () => {

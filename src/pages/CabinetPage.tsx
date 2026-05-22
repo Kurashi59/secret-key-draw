@@ -25,7 +25,6 @@ export default function CabinetPage({ onGoAuth }: { onGoAuth: () => void }) {
   const [depositMsg, setDepositMsg] = useState('');
   const [depositLoading, setDepositLoading] = useState(false);
   const [qrUrl, setQrUrl] = useState('');
-  const [showQr, setShowQr] = useState(false);
   const [selectedProvider, setSelectedProvider] = useState<'yookassa' | 'sberbank' | 'tinkoff' | 'manual'>('yookassa');
   const [paymentSuccess, setPaymentSuccess] = useState(false);
 
@@ -162,14 +161,14 @@ export default function CabinetPage({ onGoAuth }: { onGoAuth: () => void }) {
 
           {/* Two balances */}
           <div className="flex flex-row sm:flex-col gap-3">
-            <div className="card-glow rounded-xl px-4 py-3 text-center min-w-[110px]">
+            <button onClick={() => setActiveTab(4)} className="card-glow rounded-xl px-4 py-3 text-center min-w-[110px] hover:border-gold-500/40 transition-all cursor-pointer">
               <div className="text-xs text-white/40 uppercase tracking-wider font-rubik mb-1">Счёт</div>
               <div className="font-oswald text-xl text-gold-400 font-bold">{(user.external_balance || 0).toLocaleString()} ₽</div>
-            </div>
-            <div className="card-glow rounded-xl px-4 py-3 text-center min-w-[110px]" style={{ borderColor: 'rgba(74,222,128,0.2)' }}>
+            </button>
+            <button onClick={() => setActiveTab(4)} className="card-glow rounded-xl px-4 py-3 text-center min-w-[110px] hover:border-green-400/40 transition-all cursor-pointer" style={{ borderColor: 'rgba(74,222,128,0.2)' }}>
               <div className="text-xs text-green-400/70 uppercase tracking-wider font-rubik mb-1">Бонусы</div>
               <div className="font-oswald text-xl text-green-400 font-bold">{(user.referral_balance || 0).toLocaleString()} ₽</div>
-            </div>
+            </button>
           </div>
         </div>
 
@@ -253,8 +252,6 @@ export default function CabinetPage({ onGoAuth }: { onGoAuth: () => void }) {
             depositLoading={depositLoading}
             onRequestDeposit={requestDeposit}
             qrUrl={qrUrl}
-            showQr={showQr}
-            onToggleQr={() => setShowQr(v => !v)}
             loadingTx={loadingTx}
             transactions={transactions}
           />
