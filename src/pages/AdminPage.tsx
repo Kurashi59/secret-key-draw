@@ -5,7 +5,7 @@ import Icon from '@/components/ui/icon';
 import { ADMIN_TABS, Door, SiteContent, ContactsInfo, AdminUser, RefAgent, DepositReq, RegistrationRequest, MentorLogEntry } from './admin/AdminTypes';
 import { StatCard, PrizesEditor } from './admin/AdminPrizesEditor';
 import { AdminDoorsTab } from './admin/AdminDoorsTab';
-import { AdminUsersTab, AdminReferralsTab, AdminDepositsTab, AdminUsersModals, AdminRegistrationRequestsTab, AdminMentorLogTab, CreateUserDraft, ApproveRegDraft } from './admin/AdminUsersTab';
+import { AdminUsersTab, AdminReferralsTab, AdminDepositsTab, AdminUsersModals, AdminRegistrationRequestsTab, AdminMentorLogTab, CreateUserDraft, ApproveRegDraft, EditMentorsDraft } from './admin/AdminUsersTab';
 
 export default function AdminPage({ onGoAuth }: { onGoAuth: () => void }) {
   const { user } = useAuth();
@@ -55,6 +55,9 @@ export default function AdminPage({ onGoAuth }: { onGoAuth: () => void }) {
   const [approveReg, setApproveReg] = useState<ApproveRegDraft | null>(null);
   const [approveRegMsg, setApproveRegMsg] = useState('');
   const [approveRegResult, setApproveRegResult] = useState<{ member_number: string; password: string } | null>(null);
+
+  const [editMentors, setEditMentors] = useState<EditMentorsDraft | null>(null);
+  const [editMentorsMsg, setEditMentorsMsg] = useState('');
 
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -332,6 +335,45 @@ export default function AdminPage({ onGoAuth }: { onGoAuth: () => void }) {
     } catch (e: unknown) { setRegMsg(e instanceof Error ? e.message : 'Ошибка'); }
   };
 
+  const openEditMentors = (u: AdminUser) => {
+    setEditMentors({
+      userId: u.id,
+      userName: u.name,
+      userMemberNumber: u.member_number,
+      mentor1_id: u.mentor1_id ? String(u.mentor1_id) : '',
+      mentor2_id: u.mentor2_id ? String(u.mentor2_id) : '',
+      mentor3_id: u.mentor3_id ? String(u.mentor3_id) : '',
+    });
+    setEditMentorsMsg('');
+  };
+
+  const closeEditMentors = () => {
+    setEditMentors(null);
+    setEditMentorsMsg('');
+  };
+
+  const submitEditMentors = async () => {
+    if (!editMentors) return;
+    setEditMentorsMsg('');
+    const { userId, mentor1_id, mentor2_id, mentor3_id } = editMentors;
+    if (!mentor1_id || !mentor2_id || !mentor3_id) {
+      setEditMentorsMsg('Укажите всех трёх наставников');
+      return;
+    }
+    const ids = [+mentor1_id, +mentor2_id, +mentor3_id];
+    if (new Set(ids).size < 3) {
+      setEditMentorsMsg('Наставники должны быть разными');
+      return;
+    }
+    try {
+      await api.auth.adminUpdateMentors(userId, ids[0], ids[1], ids[2]);
+      setEditMentors(null);
+      await api.content.adminUsers().then(u => setAdminUsers(u as unknown as AdminUser[]));
+      await api.auth.adminMentorLog().then(ml => setMentorLog(ml as unknown as MentorLogEntry[]));
+      setUserMsg('Наставники обновлены');
+    } catch (e: unknown) { setEditMentorsMsg(e instanceof Error ? e.message : 'Ошибка'); }
+  };
+
   const inputCls = 'w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-white font-rubik text-sm focus:outline-none focus:border-gold-500/50 transition-colors';
 
   return (
@@ -361,6 +403,11 @@ export default function AdminPage({ onGoAuth }: { onGoAuth: () => void }) {
         onCloseApproveReg={closeApproveReg}
         onApproveRegChange={patch => setApproveReg(prev => prev ? { ...prev, ...patch } : null)}
         onSubmitApproveReg={submitApproveReg}
+        editMentors={editMentors}
+        editMentorsMsg={editMentorsMsg}
+        onCloseEditMentors={closeEditMentors}
+        onEditMentorsChange={patch => setEditMentors(prev => prev ? { ...prev, ...patch } : null)}
+        onSubmitEditMentors={submitEditMentors}
       />
 
       <div className="max-w-5xl mx-auto">
@@ -468,6 +515,7 @@ export default function AdminPage({ onGoAuth }: { onGoAuth: () => void }) {
                 onDepositUserChange={patch => setDepositUser(prev => prev ? { ...prev, ...patch } : null)}
                 onDeleteConfirmChange={patch => setDeleteConfirm(prev => prev ? { ...prev, ...patch } : null)}
                 onOpenCreateUser={() => setCreateUserOpen(true)}
+                onOpenEditMentors={openEditMentors}
               />
             )}
 

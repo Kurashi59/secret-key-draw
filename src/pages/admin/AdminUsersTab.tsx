@@ -12,6 +12,11 @@ export interface ApproveRegDraft {
   requestId: number; mentor2_id: string; mentor3_id: string; member_number: string; password: string;
 }
 
+export interface EditMentorsDraft {
+  userId: number; userName: string; userMemberNumber: string;
+  mentor1_id: string; mentor2_id: string; mentor3_id: string;
+}
+
 interface AdminUsersTabProps {
   adminUsers: AdminUser[];
   userMsg: string;
@@ -28,6 +33,7 @@ interface AdminUsersTabProps {
   onDepositUserChange: (patch: { amount: string }) => void;
   onDeleteConfirmChange: (patch: { input: string }) => void;
   onOpenCreateUser: () => void;
+  onOpenEditMentors: (u: AdminUser) => void;
 }
 
 interface AdminReferralsTabProps {
@@ -71,6 +77,11 @@ interface AdminUsersModalsProps {
   onCloseApproveReg: () => void;
   onApproveRegChange: (patch: Partial<ApproveRegDraft>) => void;
   onSubmitApproveReg: () => void;
+  editMentors: EditMentorsDraft | null;
+  editMentorsMsg: string;
+  onCloseEditMentors: () => void;
+  onEditMentorsChange: (patch: Partial<EditMentorsDraft>) => void;
+  onSubmitEditMentors: () => void;
 }
 
 export function AdminUsersModals({
@@ -82,6 +93,8 @@ export function AdminUsersModals({
   onCloseCreateUser, onCreateUserChange, onSubmitCreateUser,
   approveReg, approveRegMsg, approveRegResult,
   onCloseApproveReg, onApproveRegChange, onSubmitApproveReg,
+  editMentors, editMentorsMsg,
+  onCloseEditMentors, onEditMentorsChange, onSubmitEditMentors,
 }: AdminUsersModalsProps) {
   return (
     <>
@@ -201,13 +214,46 @@ export function AdminUsersModals({
           </div>
         </div>
       )}
+
+      {editMentors && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-4 overflow-y-auto py-8">
+          <div className="w-full max-w-md card-glow rounded-2xl p-6">
+            <h3 className="font-oswald text-lg text-white mb-1">Изменить наставников</h3>
+            <p className="text-white/40 text-xs font-rubik mb-4">
+              {editMentors.userName} <code className="text-gold-400 bg-gold-500/10 px-1.5 py-0.5 rounded">№{editMentors.userMemberNumber}</code>
+            </p>
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs text-white/40 font-rubik block mb-1">Наставник 1 (ID пользователя)</label>
+                <input value={editMentors.mentor1_id} onChange={e => onEditMentorsChange({ mentor1_id: e.target.value })}
+                  placeholder="ID наставника 1" className={inputCls} />
+              </div>
+              <div>
+                <label className="text-xs text-white/40 font-rubik block mb-1">Наставник 2 (ID пользователя)</label>
+                <input value={editMentors.mentor2_id} onChange={e => onEditMentorsChange({ mentor2_id: e.target.value })}
+                  placeholder="ID наставника 2" className={inputCls} />
+              </div>
+              <div>
+                <label className="text-xs text-white/40 font-rubik block mb-1">Наставник 3 (ID пользователя)</label>
+                <input value={editMentors.mentor3_id} onChange={e => onEditMentorsChange({ mentor3_id: e.target.value })}
+                  placeholder="ID наставника 3" className={inputCls} />
+              </div>
+              {editMentorsMsg && <p className="text-red-400 text-sm font-rubik">{editMentorsMsg}</p>}
+              <div className="flex gap-3 pt-2">
+                <button onClick={onCloseEditMentors} className="flex-1 py-2 rounded-xl text-white/50 border border-white/10 text-sm font-rubik hover:border-white/20">Отмена</button>
+                <button onClick={onSubmitEditMentors} className="flex-1 btn-gold py-2 rounded-xl text-sm">Сохранить</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
 
 export function AdminUsersTab({
   adminUsers, userMsg, isMainAdmin, inputCls: _inputCls,
-  onToggleBlock, onSetRole, onSetDeleteConfirm, onSetDepositUser, onOpenCreateUser,
+  onToggleBlock, onSetRole, onSetDeleteConfirm, onSetDepositUser, onOpenCreateUser, onOpenEditMentors,
 }: AdminUsersTabProps) {
   return (
     <div className="space-y-4 fade-up-3">
@@ -235,7 +281,10 @@ export function AdminUsersTab({
                   <div className="text-xs text-white/30">{u.phone || '—'}</div>
                 </td>
                 <td className="py-2 px-3 text-xs text-white/40">
-                  {[u.mentor1_id, u.mentor2_id, u.mentor3_id].filter(Boolean).join(', ') || '—'}
+                  {[u.mentor1_id, u.mentor2_id, u.mentor3_id]
+                    .filter((mid): mid is number => !!mid)
+                    .map(mid => `№${adminUsers.find(x => x.id === mid)?.member_number || mid}`)
+                    .join(', ') || '—'}
                 </td>
                 <td className="py-2 px-3 text-gold-400">{u.external_balance.toLocaleString()} ₽</td>
                 <td className="py-2 px-3">
@@ -257,6 +306,10 @@ export function AdminUsersTab({
                     <button onClick={() => onToggleBlock(u.id, u.is_blocked)}
                       className={`text-xs px-2 py-1 rounded-lg transition-colors ${u.is_blocked ? 'bg-green-500/10 text-green-400 hover:bg-green-500/20' : 'bg-red-500/10 text-red-400 hover:bg-red-500/20'}`}>
                       {u.is_blocked ? 'Разблокировать' : 'Заблокировать'}
+                    </button>
+                    <button onClick={() => onOpenEditMentors(u)}
+                      className="text-xs px-2 py-1 rounded-lg bg-purple-500/10 text-purple-400 hover:bg-purple-500/20 transition-colors">
+                      Наставники
                     </button>
                     {isMainAdmin && !u.is_main_admin && (
                       <>
