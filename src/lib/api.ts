@@ -1,6 +1,6 @@
-const AUTH_URL = 'https://functions.poehali.dev/7a0bfbbe-e6dc-439b-8068-9b9b23998b5a';
-const CONTENT_URL = 'https://functions.poehali.dev/9f14e54c-c915-4e37-94ac-1d7812c3c407';
-const PAYMENTS_URL = 'https://functions.poehali.dev/83e924d9-eafe-4909-9221-fc05ab9f1aeb';
+const AUTH_URL = 'https://functions.poehali.dev/4ca7a908-84ee-4a21-9da4-c260b0e6256e';
+const CONTENT_URL = 'https://functions.poehali.dev/a0c69448-0300-4815-b3dc-3e4ffb53fcf4';
+const PAYMENTS_URL = 'https://functions.poehali.dev/99f8d063-6e90-4c9d-b005-3d508450b931';
 
 function getToken(): string {
   return localStorage.getItem('gd_token') || '';
