@@ -1,4 +1,4 @@
-export const ADMIN_TABS = ['Обзор', 'Двери', 'Тексты сайта', 'Контакты', 'Пользователи', 'Рефералы', 'Заявки', 'Оплата'];
+export const ADMIN_TABS = ['Обзор', 'Двери', 'Тексты сайта', 'Контакты', 'Пользователи', 'Рефералы', 'Рег. заявки', 'Депозиты', 'Оплата'];
 
 export const COLORS = ['#6b7280','#ef4444','#f97316','#eab308','#22c55e','#3b82f6','#8b5cf6','#ec4899','#14b8a6','#f59e0b'];
 export const RARITIES = [
@@ -22,8 +22,19 @@ export interface ContactsInfo { [key: string]: { value: string; label: string } 
 export interface AdminUser {
   id: number; name: string; full_name: string; email: string; phone: string;
   birth_date: string; role: string; referral_code: string;
+  member_number: string; mentor1_id: number | null; mentor2_id: number | null; mentor3_id: number | null;
   external_balance: number; referral_balance: number; keys_count: number;
   is_blocked: boolean; is_main_admin: boolean; created_at: string;
 }
 export interface RefAgent { id: number; name: string; referral_code: string; invited: number; earned: number; }
 export interface DepositReq { id: number; user_id: number; user_name: string; user_email: string; amount: number; status: string; created_at: string; comment: string; }
+export interface RegistrationRequest {
+  id: number; name: string; phone: string; comment: string; status: string; created_at: string;
+  mentor_id: number; mentor_name: string; mentor_member_number: string;
+}
+export interface ReferralTreeNode {
+  id: number; name: string; member_number: string; level: number;
+  mentor1: { member_number: string; name: string } | null;
+  mentor2: { member_number: string; name: string } | null;
+  mentor3: { member_number: string; name: string } | null;
+}

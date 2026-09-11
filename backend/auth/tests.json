@@ -12,7 +12,7 @@
       "name": "Login - wrong password",
       "method": "POST",
       "path": "/?action=login",
-      "body": {"email": "nobody@test.com", "password": "wrong"},
+      "body": {"member_number": "9999", "password": "wrong"},
       "expectedStatus": 400,
       "expectedBody": {"error": "string"},
       "bodyMatcher": "partial"
@@ -26,11 +26,11 @@
       "bodyMatcher": "partial"
     },
     {
-      "name": "Register - missing fields",
+      "name": "Admin create user - no auth",
       "method": "POST",
-      "path": "/?action=register",
-      "body": {"email": "test@test.com"},
-      "expectedStatus": 400,
+      "path": "/?action=admin_create_user",
+      "body": {"name": "Test"},
+      "expectedStatus": 401,
       "expectedBody": {"error": "string"},
       "bodyMatcher": "partial"
     }

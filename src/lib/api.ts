@@ -68,10 +68,7 @@ const p = (action: string) => `${PAYMENTS_URL}?action=${action}`;
 
 export const api = {
   auth: {
-    register: (body: { name: string; full_name?: string; email: string; phone: string; birth_date: string; password: string; referral_code?: string }) =>
-      request(a('register'), { method: 'POST', body: JSON.stringify(body) }),
-
-    login: (body: { email: string; password: string }) =>
+    login: (body: { member_number: string; password: string }) =>
       request(a('login'), { method: 'POST', body: JSON.stringify(body) }),
 
     me: () => request(a('me')),
@@ -79,6 +76,18 @@ export const api = {
 
     updateProfile: (body: { name?: string; full_name?: string; phone?: string; birth_date?: string }) =>
       request(a('update'), { method: 'POST', body: JSON.stringify(body) }),
+
+    changePassword: (old_password: string, new_password: string) =>
+      request(a('change_password'), { method: 'POST', body: JSON.stringify({ old_password, new_password }) }),
+
+    adminCreateUser: (body: { name: string; full_name?: string; phone?: string; password?: string; member_number?: string; mentor1_id: number; mentor2_id: number; mentor3_id: number }) =>
+      request(a('admin_create_user'), { method: 'POST', body: JSON.stringify(body) }),
+
+    adminUpdateMentors: (user_id: number, mentor1_id: number, mentor2_id: number, mentor3_id: number) =>
+      request(a('admin_update_mentors'), { method: 'POST', body: JSON.stringify({ user_id, mentor1_id, mentor2_id, mentor3_id }) }),
+
+    adminResetPassword: (user_id: number, password?: string) =>
+      request(a('admin_reset_password'), { method: 'POST', body: JSON.stringify({ user_id, password }) }),
 
     adminSetRole: (user_id: number, role: 'user' | 'admin') =>
       request(a('admin_set_role'), { method: 'POST', body: JSON.stringify({ user_id, role }) }),
@@ -151,6 +160,16 @@ export const api = {
       request(c('admin_confirm_deposit'), { method: 'POST', body: JSON.stringify({ request_id }) }),
     adminRejectDeposit: (request_id: number) =>
       request(c('admin_reject_deposit'), { method: 'POST', body: JSON.stringify({ request_id }) }),
+
+    submitRegistrationRequest: (body: { name: string; phone: string; comment?: string; referral_code: string }) =>
+      request(c('submit_registration_request'), { method: 'POST', body: JSON.stringify(body) }),
+    adminRegistrationRequests: () => request(c('admin_registration_requests')),
+    adminApproveRegistration: (body: { request_id: number; mentor2_id: number; mentor3_id: number; member_number?: string; password?: string }) =>
+      request(c('admin_approve_registration'), { method: 'POST', body: JSON.stringify(body) }),
+    adminRejectRegistration: (request_id: number) =>
+      request(c('admin_reject_registration'), { method: 'POST', body: JSON.stringify({ request_id }) }),
+
+    referralTree: (user_id?: number) => request(c('referral_tree') + (user_id ? `&user_id=${user_id}` : '')),
   },
 
   payments: {

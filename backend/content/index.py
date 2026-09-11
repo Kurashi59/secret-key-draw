@@ -1,14 +1,33 @@
 """
-API: двери, призы, ключи, транзакции, тексты, контакты, QR, частота выигрыша.
+API: двери, призы, ключи, транзакции, тексты, контакты, QR, частота выигрыша,
+заявки на регистрацию, реферальное дерево.
 Роутинг: ?action=...
 """
 import json
 import os
 import random
 import base64
+import hashlib
+import secrets
+import string
+import re
 import boto3
 import psycopg2
 from datetime import datetime, timezone
+
+def hash_password(password: str) -> str:
+    salt = secrets.token_hex(16)
+    h = hashlib.pbkdf2_hmac('sha256', password.encode(), salt.encode(), 100000)
+    return f"{salt}:{h.hex()}"
+
+def gen_referral_code(name: str) -> str:
+    base = re.sub(r'[^A-Za-z]', '', name).upper()[:4] or 'USER'
+    suffix = ''.join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(4))
+    return f"{base}{suffix}"
+
+def gen_password(length: int = 8) -> str:
+    alphabet = string.ascii_uppercase + string.ascii_lowercase + string.digits
+    return ''.join(secrets.choice(alphabet) for _ in range(length))
 
 S = os.environ.get('MAIN_DB_SCHEMA', 't_p87395805_secret_key_draw')
 CORS = {
@@ -612,8 +631,11 @@ def handler(event: dict, context) -> dict:
                 ref_count = cur.fetchone()[0]
                 cur.execute(f"SELECT COUNT(*) FROM {S}.deposit_requests WHERE status='pending'")
                 pending_deposits = cur.fetchone()[0]
+                cur.execute(f"SELECT COUNT(*) FROM {S}.registration_requests WHERE status='pending'")
+                pending_registrations = cur.fetchone()[0]
             return ok({'users': users_count, 'opens': opens_count, 'revenue': revenue,
-                       'referrals': ref_count, 'pending_deposits': pending_deposits})
+                       'referrals': ref_count, 'pending_deposits': pending_deposits,
+                       'pending_registrations': pending_registrations})
 
         if action == 'admin_users':
             user = get_user_by_token(conn, token)
@@ -621,12 +643,14 @@ def handler(event: dict, context) -> dict:
                 return err('Только для администратора', 403)
             with conn.cursor() as cur:
                 cur.execute(f"""SELECT id, name, full_name, email, phone, birth_date, role, referral_code,
-                                       referred_by, external_balance, referral_balance, keys_count,
+                                       referred_by, member_number, mentor1_id, mentor2_id, mentor3_id,
+                                       external_balance, referral_balance, keys_count,
                                        level, is_blocked, is_main_admin, created_at
                     FROM {S}.users ORDER BY created_at DESC""")
                 rows = cur.fetchall()
             keys_list = ['id','name','full_name','email','phone','birth_date','role','referral_code',
-                         'referred_by','external_balance','referral_balance','keys_count',
+                         'referred_by','member_number','mentor1_id','mentor2_id','mentor3_id',
+                         'external_balance','referral_balance','keys_count',
                          'level','is_blocked','is_main_admin','created_at']
             return ok([dict(zip(keys_list, r)) for r in rows])
 
@@ -714,6 +738,159 @@ def handler(event: dict, context) -> dict:
                 cur.execute(f"UPDATE {S}.deposit_requests SET status='rejected', completed_at=NOW() WHERE id=%s", (req_id,))
             conn.commit()
             return ok({'message': 'Заявка отклонена'})
+
+        # ── ЗАЯВКИ НА РЕГИСТРАЦИЮ ─────────────────────────────────────────────
+        if action == 'submit_registration_request':
+            name = (body.get('name') or '').strip()
+            phone = (body.get('phone') or '').strip()
+            comment = (body.get('comment') or '').strip()
+            ref_code = (body.get('referral_code') or '').strip().upper()
+            if not name or not phone:
+                return err('Укажите имя и телефон')
+            if not ref_code:
+                return err('Не указан реферальный код наставника')
+            with conn.cursor() as cur:
+                cur.execute(f"SELECT id FROM {S}.users WHERE referral_code=%s", (ref_code,))
+                mentor_row = cur.fetchone()
+                if not mentor_row:
+                    return err('Реферальная ссылка недействительна')
+                mentor_id = mentor_row[0]
+                cur.execute(f"""INSERT INTO {S}.registration_requests (name, phone, comment, mentor_id)
+                    VALUES (%s,%s,%s,%s) RETURNING id""", (name, phone, comment, mentor_id))
+                req_id = cur.fetchone()[0]
+            conn.commit()
+            return ok({'message': 'Заявка отправлена. Администратор свяжется с вами после проверки.', 'request_id': req_id})
+
+        if action == 'admin_registration_requests':
+            user = get_user_by_token(conn, token)
+            if not user or user['role'] != 'admin':
+                return err('Только для администратора', 403)
+            with conn.cursor() as cur:
+                cur.execute(f"""SELECT rr.id, rr.name, rr.phone, rr.comment, rr.status, rr.created_at,
+                           rr.mentor_id, m.name, m.member_number
+                    FROM {S}.registration_requests rr
+                    JOIN {S}.users m ON m.id = rr.mentor_id
+                    ORDER BY rr.status='pending' DESC, rr.created_at DESC LIMIT 200""")
+                rows = cur.fetchall()
+            keys_list = ['id','name','phone','comment','status','created_at','mentor_id','mentor_name','mentor_member_number']
+            return ok([dict(zip(keys_list, r)) for r in rows])
+
+        if action == 'admin_approve_registration':
+            user = get_user_by_token(conn, token)
+            if not user or user['role'] != 'admin':
+                return err('Только для администратора', 403)
+            req_id = body.get('request_id')
+            mentor2_id = body.get('mentor2_id')
+            mentor3_id = body.get('mentor3_id')
+            password = body.get('password') or gen_password()
+            member_number = (body.get('member_number') or '').strip()
+            if not req_id:
+                return err('Нет request_id')
+            if not mentor2_id or not mentor3_id:
+                return err('Укажите второго и третьего наставника')
+            with conn.cursor() as cur:
+                cur.execute(f"SELECT name, phone, mentor_id, status FROM {S}.registration_requests WHERE id=%s", (req_id,))
+                req = cur.fetchone()
+                if not req:
+                    return err('Заявка не найдена')
+                name, phone, mentor1_id, status = req
+                if status != 'pending':
+                    return err('Заявка уже обработана')
+                if len({mentor1_id, mentor2_id, mentor3_id}) < 3:
+                    return err('Наставники должны быть разными')
+                for mid in (mentor2_id, mentor3_id):
+                    cur.execute(f"SELECT id FROM {S}.users WHERE id=%s", (mid,))
+                    if not cur.fetchone():
+                        return err(f'Наставник с ID {mid} не найден')
+
+                if not member_number:
+                    cur.execute(f"SELECT COALESCE(MAX(member_number::int), 1000) FROM {S}.users WHERE member_number ~ '^[0-9]+$'")
+                    max_num = cur.fetchone()[0]
+                    member_number = str(int(max_num) + 1)
+                else:
+                    cur.execute(f"SELECT id FROM {S}.users WHERE member_number=%s", (member_number,))
+                    if cur.fetchone():
+                        return err('Такой номер пайщика уже занят')
+
+                my_code = gen_referral_code(name)
+                for _ in range(5):
+                    cur.execute(f"SELECT id FROM {S}.users WHERE referral_code = %s", (my_code,))
+                    if not cur.fetchone():
+                        break
+                    my_code = gen_referral_code(name)
+
+                fake_email = f"member{member_number}@internal.local"
+                ph = hash_password(password)
+                cur.execute(f"""INSERT INTO {S}.users (name, full_name, email, phone, password_hash, referral_code,
+                                        member_number, mentor1_id, mentor2_id, mentor3_id, referred_by)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
+                    (name, name, fake_email, phone, ph, my_code, member_number, mentor1_id, mentor2_id, mentor3_id, mentor1_id))
+                new_user_id = cur.fetchone()[0]
+                cur.execute(f"""UPDATE {S}.registration_requests SET status='approved', created_user_id=%s, processed_at=NOW() WHERE id=%s""",
+                            (new_user_id, req_id))
+            conn.commit()
+            return ok({'message': 'Пайщик зарегистрирован', 'member_number': member_number, 'password': password, 'user_id': new_user_id})
+
+        if action == 'admin_reject_registration':
+            user = get_user_by_token(conn, token)
+            if not user or user['role'] != 'admin':
+                return err('Только для администратора', 403)
+            req_id = body.get('request_id')
+            if not req_id:
+                return err('Нет request_id')
+            with conn.cursor() as cur:
+                cur.execute(f"SELECT status FROM {S}.registration_requests WHERE id=%s", (req_id,))
+                req = cur.fetchone()
+                if not req:
+                    return err('Заявка не найдена')
+                if req[0] != 'pending':
+                    return err('Заявка уже обработана')
+                cur.execute(f"UPDATE {S}.registration_requests SET status='rejected', processed_at=NOW() WHERE id=%s", (req_id,))
+            conn.commit()
+            return ok({'message': 'Заявка отклонена'})
+
+        # ── РЕФЕРАЛЬНОЕ ДЕРЕВО ────────────────────────────────────────────────
+        if action == 'referral_tree':
+            user = get_user_by_token(conn, token)
+            if not user:
+                return err('Требуется авторизация', 401)
+            root_id = int(qs.get('user_id') or user['id'])
+            with conn.cursor() as cur:
+                cur.execute(f"""
+                    WITH RECURSIVE tree AS (
+                        SELECT id, name, member_number, mentor1_id, mentor2_id, mentor3_id, 0 AS depth
+                        FROM {S}.users WHERE id = %s
+                        UNION ALL
+                        SELECT u.id, u.name, u.member_number, u.mentor1_id, u.mentor2_id, u.mentor3_id, tree.depth + 1
+                        FROM {S}.users u JOIN tree ON u.mentor1_id = tree.id
+                        WHERE tree.depth < 5
+                    )
+                    SELECT id, name, member_number, mentor1_id, mentor2_id, mentor3_id, depth FROM tree ORDER BY depth, id""",
+                    (root_id,))
+                rows = cur.fetchall()
+            keys_list = ['id','name','member_number','mentor1_id','mentor2_id','mentor3_id','level']
+            nodes = [dict(zip(keys_list, r)) for r in rows]
+            # Подставляем номера пайщиков наставников для карточки каждого узла
+            ids = {n['id'] for n in nodes}
+            mentor_ids = {n[k] for n in nodes for k in ('mentor1_id','mentor2_id','mentor3_id') if n[k]}
+            lookup_ids = mentor_ids - ids
+            mentor_map = {}
+            if lookup_ids:
+                with conn.cursor() as cur:
+                    cur.execute(f"SELECT id, member_number, name FROM {S}.users WHERE id = ANY(%s)", (list(lookup_ids),))
+                    for mid, mnum, mname in cur.fetchall():
+                        mentor_map[mid] = {'member_number': mnum, 'name': mname}
+            for n in nodes:
+                node_by_id = {x['id']: x for x in nodes}
+                for k, out_key in (('mentor1_id','mentor1'), ('mentor2_id','mentor2'), ('mentor3_id','mentor3')):
+                    mid = n[k]
+                    if not mid:
+                        n[out_key] = None
+                    elif mid in node_by_id:
+                        n[out_key] = {'member_number': node_by_id[mid]['member_number'], 'name': node_by_id[mid]['name']}
+                    else:
+                        n[out_key] = mentor_map.get(mid)
+            return ok(nodes)
 
         return err('Неизвестное действие', 404)
 

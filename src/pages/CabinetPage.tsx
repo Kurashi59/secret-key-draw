@@ -2,13 +2,13 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { api } from '@/lib/api';
 import Icon from '@/components/ui/icon';
-import { TABS, HistoryItem, Transaction, UserKey } from './cabinet/CabinetTypes';
+import { TABS, HistoryItem, Transaction, UserKey, ReferralTreeNode } from './cabinet/CabinetTypes';
 import { CabinetKeysTab, CabinetHistoryTab } from './cabinet/CabinetKeysHistory';
 import { CabinetBalanceTab } from './cabinet/CabinetBalance';
 import { CabinetReferralsTab, CabinetSettingsTab } from './cabinet/CabinetReferralsSettings';
 
 export default function CabinetPage({ onGoAuth, onResetVersion }: { onGoAuth: () => void; onResetVersion: () => void }) {
-  const { user, logout, refreshUser } = useAuth();
+  const { user, logout } = useAuth();
   const [activeTab, setActiveTab] = useState(0);
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -17,24 +17,17 @@ export default function CabinetPage({ onGoAuth, onResetVersion }: { onGoAuth: ()
   const [loadingTx, setLoadingTx] = useState(false);
   const [loadingKeys, setLoadingKeys] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [profileForm, setProfileForm] = useState({ name: '', full_name: '', phone: '', birth_date: '' });
+  const [passwordForm, setPasswordForm] = useState({ old_password: '', new_password: '', new_password2: '' });
   const [saveLoading, setSaveLoading] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
+  const [refTree, setRefTree] = useState<ReferralTreeNode[]>([]);
+  const [refTreeLoading, setRefTreeLoading] = useState(false);
   const [depositAmount, setDepositAmount] = useState('');
   const [depositMsg, setDepositMsg] = useState('');
   const [depositLoading, setDepositLoading] = useState(false);
   const [qrUrl, setQrUrl] = useState('');
   const [selectedProvider, setSelectedProvider] = useState<'yookassa' | 'sberbank' | 'tinkoff'>('yookassa');
   const [paymentSuccess, setPaymentSuccess] = useState(false);
-
-  useEffect(() => {
-    if (user) setProfileForm({
-      name: user.name,
-      full_name: user.full_name || '',
-      phone: user.phone || '',
-      birth_date: user.birth_date || '',
-    });
-  }, [user]);
 
   useEffect(() => {
     api.content.getPaymentSettings().then((ps) => {
@@ -56,6 +49,10 @@ export default function CabinetPage({ onGoAuth, onResetVersion }: { onGoAuth: ()
     if (activeTab === 1) {
       setLoadingKeys(true);
       api.content.getMyKeys().then(k => setMyKeys(k as unknown as UserKey[])).catch(() => {}).finally(() => setLoadingKeys(false));
+    }
+    if (activeTab === 3) {
+      setRefTreeLoading(true);
+      api.content.referralTree().then(t => setRefTree(t as unknown as ReferralTreeNode[])).catch(() => {}).finally(() => setRefTreeLoading(false));
     }
   }, [activeTab, user]);
 
@@ -87,14 +84,22 @@ export default function CabinetPage({ onGoAuth, onResetVersion }: { onGoAuth: ()
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const saveProfile = async (e: React.FormEvent) => {
+  const changePassword = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSaveLoading(true);
     setSaveMsg('');
+    if (passwordForm.new_password !== passwordForm.new_password2) {
+      setSaveMsg('Новые пароли не совпадают');
+      return;
+    }
+    if (passwordForm.new_password.length < 6) {
+      setSaveMsg('Новый пароль минимум 6 символов');
+      return;
+    }
+    setSaveLoading(true);
     try {
-      await api.auth.updateProfile(profileForm);
-      await refreshUser();
-      setSaveMsg('Сохранено!');
+      await api.auth.changePassword(passwordForm.old_password, passwordForm.new_password);
+      setPasswordForm({ old_password: '', new_password: '', new_password2: '' });
+      setSaveMsg('Пароль изменён!');
     } catch (e: unknown) {
       setSaveMsg(e instanceof Error ? e.message : 'Ошибка');
     } finally {
@@ -142,7 +147,7 @@ export default function CabinetPage({ onGoAuth, onResetVersion }: { onGoAuth: ()
                 <span className="text-xs bg-gold-500/20 border border-gold-500/30 text-gold-400 rounded-full px-2 py-0.5 font-oswald flex-shrink-0">ADMIN</span>
               )}
             </div>
-            <div className="text-white/40 text-sm font-rubik mb-1">{user.email}</div>
+            <div className="text-white/40 text-sm font-rubik mb-1">Пайщик № {user.member_number}</div>
             {user.phone && <div className="text-white/30 text-xs font-rubik mb-2">{user.phone}</div>}
             <div className="flex items-center gap-2">
               <span className="text-xs border border-gold-500/40 bg-gold-500/10 text-gold-400 rounded-full px-3 py-0.5 font-oswald tracking-wider">👑 {user.level}</span>
@@ -226,6 +231,9 @@ export default function CabinetPage({ onGoAuth, onResetVersion }: { onGoAuth: ()
             referralBalance={user.referral_balance}
             copied={copied}
             onCopy={copyRef}
+            memberNumber={user.member_number}
+            tree={refTree}
+            treeLoading={refTreeLoading}
           />
         )}
 
@@ -251,11 +259,11 @@ export default function CabinetPage({ onGoAuth, onResetVersion }: { onGoAuth: ()
         {/* Настройки */}
         {activeTab === 5 && (
           <CabinetSettingsTab
-            profileForm={profileForm}
-            onProfileChange={patch => setProfileForm(prev => ({ ...prev, ...patch }))}
+            passwordForm={passwordForm}
+            onPasswordChange={patch => setPasswordForm(prev => ({ ...prev, ...patch }))}
             saveLoading={saveLoading}
             saveMsg={saveMsg}
-            onSave={saveProfile}
+            onSave={changePassword}
             onLogout={logout}
             onResetVersion={onResetVersion}
           />

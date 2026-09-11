@@ -1,6 +1,7 @@
 """
-Авторизация: регистрация, вход, выход, профиль, управление пользователями.
-Роутинг: ?action=register|login|me|logout|update|admin_set_role|admin_deposit|admin_delete_user
+Авторизация: вход по номеру пайщика, профиль, смена пароля, управление пользователями.
+Свободная регистрация отключена — учётные записи создаёт только администратор.
+Роутинг: ?action=login|me|logout|update|change_password|admin_create_user|admin_update_mentors|admin_set_role|admin_deposit|admin_delete_user
 """
 import json
 import os
@@ -13,7 +14,7 @@ import psycopg2
 from datetime import datetime, timedelta, timezone
 
 S = os.environ.get('MAIN_DB_SCHEMA', 't_p87395805_secret_key_draw')
-_VERSION = '2'
+_VERSION = '3'
 CORS = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
@@ -43,6 +44,10 @@ def gen_referral_code(name: str) -> str:
     suffix = ''.join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(4))
     return f"{base}{suffix}"
 
+def gen_password(length: int = 8) -> str:
+    alphabet = string.ascii_uppercase + string.ascii_lowercase + string.digits
+    return ''.join(secrets.choice(alphabet) for _ in range(length))
+
 def create_session(conn, user_id: int) -> str:
     token = secrets.token_urlsafe(48)
     expires = datetime.now(timezone.utc) + timedelta(days=30)
@@ -57,7 +62,8 @@ def get_user_by_token(conn, token: str):
     with conn.cursor() as cur:
         cur.execute(f"""
             SELECT u.id, u.name, u.full_name, u.email, u.phone, u.birth_date,
-                   u.role, u.referral_code, u.referred_by,
+                   u.role, u.referral_code, u.referred_by, u.member_number,
+                   u.mentor1_id, u.mentor2_id, u.mentor3_id,
                    u.external_balance, u.referral_balance,
                    u.keys_count, u.level, u.level_progress, u.is_blocked, u.is_main_admin
             FROM {S}.sessions s JOIN {S}.users u ON u.id = s.user_id
@@ -66,7 +72,8 @@ def get_user_by_token(conn, token: str):
     if not row:
         return None
     keys = ['id','name','full_name','email','phone','birth_date','role','referral_code',
-            'referred_by','external_balance','referral_balance','keys_count',
+            'referred_by','member_number','mentor1_id','mentor2_id','mentor3_id',
+            'external_balance','referral_balance','keys_count',
             'level','level_progress','is_blocked','is_main_admin']
     u = dict(zip(keys, row))
     if u['birth_date']:
@@ -98,75 +105,23 @@ def handler(event: dict, context) -> dict:
     if not action:
         return ok({'status': 'ok', 'service': 'auth'})
 
-    if action == 'register':
-        name = (body.get('name') or '').strip()
-        full_name = (body.get('full_name') or '').strip()
-        email = (body.get('email') or '').strip().lower()
-        phone = (body.get('phone') or '').strip()
-        birth_date = (body.get('birth_date') or '').strip()
-        password = body.get('password', '')
-        ref_code = (body.get('referral_code') or '').strip().upper()
-
-        if not name or not email or not password or not phone or not birth_date:
-            return err('Заполните все поля: имя, email, телефон, дата рождения, пароль')
-        if len(password) < 6:
-            return err('Пароль минимум 6 символов')
-        if not re.match(r'^[^@]+@[^@]+\.[^@]+$', email):
-            return err('Некорректный email')
-        if not re.match(r'^\d{4}-\d{2}-\d{2}$', birth_date):
-            return err('Дата рождения в формате ГГГГ-ММ-ДД')
-
-        conn = get_conn()
-        try:
-            with conn.cursor() as cur:
-                cur.execute(f"SELECT id FROM {S}.users WHERE email = %s", (email,))
-                if cur.fetchone():
-                    return err('Пользователь с таким email уже существует')
-
-                referrer_id = None
-                if ref_code:
-                    cur.execute(f"SELECT id FROM {S}.users WHERE referral_code = %s", (ref_code,))
-                    ref_row = cur.fetchone()
-                    if not ref_row:
-                        return err('Реферальный код не найден')
-                    referrer_id = ref_row[0]
-
-                my_code = gen_referral_code(name)
-                for _ in range(5):
-                    cur.execute(f"SELECT id FROM {S}.users WHERE referral_code = %s", (my_code,))
-                    if not cur.fetchone():
-                        break
-                    my_code = gen_referral_code(name)
-
-                ph = hash_password(password)
-                cur.execute(f"""
-                    INSERT INTO {S}.users (name, full_name, email, phone, birth_date, password_hash, referral_code, referred_by)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
-                    (name, full_name or name, email, phone, birth_date, ph, my_code, referrer_id))
-                user_id = cur.fetchone()[0]
-            conn.commit()
-            sess_token = create_session(conn, user_id)
-            return ok({'token': sess_token, 'message': 'Регистрация успешна'})
-        finally:
-            conn.close()
-
     if action == 'login':
-        email = (body.get('email') or '').strip().lower()
+        member_number = (body.get('member_number') or body.get('email') or '').strip()
         password = body.get('password', '')
-        if not email or not password:
-            return err('Введите email и пароль')
+        if not member_number or not password:
+            return err('Введите номер пайщика и пароль')
         conn = get_conn()
         try:
             with conn.cursor() as cur:
-                cur.execute(f"SELECT id, password_hash, is_blocked FROM {S}.users WHERE email = %s", (email,))
+                cur.execute(f"SELECT id, password_hash, is_blocked FROM {S}.users WHERE member_number = %s", (member_number,))
                 row = cur.fetchone()
             if not row:
-                return err('Неверный email или пароль')
+                return err('Неверный номер пайщика или пароль')
             user_id, ph, is_blocked = row
             if is_blocked:
                 return err('Аккаунт заблокирован')
             if not verify_password(password, ph):
-                return err('Неверный email или пароль')
+                return err('Неверный номер пайщика или пароль')
             sess_token = create_session(conn, user_id)
             return ok({'token': sess_token, 'message': 'Вход выполнен'})
         finally:
@@ -187,7 +142,7 @@ def handler(event: dict, context) -> dict:
                 with conn.cursor() as cur:
                     cur.execute(f"SELECT COUNT(*), COALESCE(SUM(amount),0) FROM {S}.referral_earnings WHERE referrer_id = %s", (user['id'],))
                     ref_row = cur.fetchone()
-                    cur.execute(f"SELECT COUNT(*) FROM {S}.users WHERE referred_by = %s", (user['id'],))
+                    cur.execute(f"SELECT COUNT(*) FROM {S}.users WHERE mentor1_id = %s", (user['id'],))
                     invited_count = cur.fetchone()[0]
                     cur.execute(f"SELECT COUNT(*) FROM {S}.user_keys WHERE user_id=%s AND is_used=FALSE", (user['id'],))
                     keys_available = cur.fetchone()[0]
@@ -229,6 +184,137 @@ def handler(event: dict, context) -> dict:
                             (name, full_name, phone, birth_date or None, user['id']))
             conn.commit()
             return ok({'message': 'Профиль обновлён'})
+        finally:
+            conn.close()
+
+    if action == 'change_password':
+        if not token:
+            return err('Требуется авторизация', 401)
+        conn = get_conn()
+        try:
+            user = get_user_by_token(conn, token)
+            if not user:
+                return err('Токен недействителен', 401)
+            old_password = body.get('old_password', '')
+            new_password = body.get('new_password', '')
+            if len(new_password) < 6:
+                return err('Новый пароль минимум 6 символов')
+            with conn.cursor() as cur:
+                cur.execute(f"SELECT password_hash FROM {S}.users WHERE id=%s", (user['id'],))
+                ph = cur.fetchone()[0]
+                if not verify_password(old_password, ph):
+                    return err('Неверный текущий пароль')
+                new_hash = hash_password(new_password)
+                cur.execute(f"UPDATE {S}.users SET password_hash=%s WHERE id=%s", (new_hash, user['id']))
+            conn.commit()
+            return ok({'message': 'Пароль изменён'})
+        finally:
+            conn.close()
+
+    # ── ADMIN: создание пайщиков вручную ────────────────────────────────────
+    if action == 'admin_create_user':
+        if not token:
+            return err('Требуется авторизация', 401)
+        conn = get_conn()
+        try:
+            caller = get_user_by_token(conn, token)
+            if not caller or caller['role'] != 'admin':
+                return err('Только для администратора', 403)
+
+            name = (body.get('name') or '').strip()
+            full_name = (body.get('full_name') or '').strip()
+            phone = (body.get('phone') or '').strip()
+            password = body.get('password') or gen_password()
+            mentor1_id = body.get('mentor1_id')
+            mentor2_id = body.get('mentor2_id')
+            mentor3_id = body.get('mentor3_id')
+            member_number = (body.get('member_number') or '').strip()
+
+            if not name:
+                return err('Укажите имя пользователя')
+            if not mentor1_id or not mentor2_id or not mentor3_id:
+                return err('Укажите трёх наставников (номера пайщиков)')
+            if len({mentor1_id, mentor2_id, mentor3_id}) < 3:
+                return err('Наставники должны быть разными')
+            if len(password) < 6:
+                return err('Пароль минимум 6 символов')
+
+            with conn.cursor() as cur:
+                for mid in (mentor1_id, mentor2_id, mentor3_id):
+                    cur.execute(f"SELECT id FROM {S}.users WHERE id=%s", (mid,))
+                    if not cur.fetchone():
+                        return err(f'Наставник с ID {mid} не найден')
+
+                if not member_number:
+                    cur.execute(f"SELECT COALESCE(MAX(member_number::int), 1000) FROM {S}.users WHERE member_number ~ '^[0-9]+$'")
+                    max_num = cur.fetchone()[0]
+                    member_number = str(int(max_num) + 1)
+                else:
+                    cur.execute(f"SELECT id FROM {S}.users WHERE member_number=%s", (member_number,))
+                    if cur.fetchone():
+                        return err('Такой номер пайщика уже занят')
+
+                my_code = gen_referral_code(name)
+                for _ in range(5):
+                    cur.execute(f"SELECT id FROM {S}.users WHERE referral_code = %s", (my_code,))
+                    if not cur.fetchone():
+                        break
+                    my_code = gen_referral_code(name)
+
+                fake_email = f"member{member_number}@internal.local"
+                ph = hash_password(password)
+                cur.execute(f"""
+                    INSERT INTO {S}.users (name, full_name, email, phone, password_hash, referral_code,
+                                            member_number, mentor1_id, mentor2_id, mentor3_id, referred_by)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
+                    (name, full_name or name, fake_email, phone, ph, my_code,
+                     member_number, mentor1_id, mentor2_id, mentor3_id, mentor1_id))
+                user_id = cur.fetchone()[0]
+            conn.commit()
+            return ok({'message': 'Пайщик создан', 'user_id': user_id, 'member_number': member_number, 'password': password})
+        finally:
+            conn.close()
+
+    if action == 'admin_update_mentors':
+        if not token:
+            return err('Требуется авторизация', 401)
+        conn = get_conn()
+        try:
+            caller = get_user_by_token(conn, token)
+            if not caller or caller['role'] != 'admin':
+                return err('Только для администратора', 403)
+            target_id = body.get('user_id')
+            mentor1_id = body.get('mentor1_id')
+            mentor2_id = body.get('mentor2_id')
+            mentor3_id = body.get('mentor3_id')
+            if not mentor1_id or not mentor2_id or not mentor3_id:
+                return err('Укажите трёх наставников')
+            if len({mentor1_id, mentor2_id, mentor3_id}) < 3:
+                return err('Наставники должны быть разными')
+            with conn.cursor() as cur:
+                cur.execute(f"UPDATE {S}.users SET mentor1_id=%s, mentor2_id=%s, mentor3_id=%s, referred_by=%s WHERE id=%s",
+                            (mentor1_id, mentor2_id, mentor3_id, mentor1_id, target_id))
+            conn.commit()
+            return ok({'message': 'Наставники обновлены'})
+        finally:
+            conn.close()
+
+    if action == 'admin_reset_password':
+        if not token:
+            return err('Требуется авторизация', 401)
+        conn = get_conn()
+        try:
+            caller = get_user_by_token(conn, token)
+            if not caller or caller['role'] != 'admin':
+                return err('Только для администратора', 403)
+            target_id = body.get('user_id')
+            new_password = body.get('password') or gen_password()
+            if len(new_password) < 6:
+                return err('Пароль минимум 6 символов')
+            with conn.cursor() as cur:
+                cur.execute(f"UPDATE {S}.users SET password_hash=%s WHERE id=%s", (hash_password(new_password), target_id))
+            conn.commit()
+            return ok({'message': 'Пароль изменён', 'password': new_password})
         finally:
             conn.close()
 

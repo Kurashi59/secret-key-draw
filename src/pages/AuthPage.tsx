@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth-context';
+import { api, ApiError } from '@/lib/api';
 import Icon from '@/components/ui/icon';
 
 interface AuthPageProps {
@@ -8,51 +9,31 @@ interface AuthPageProps {
 }
 
 export default function AuthPage({ onSuccess, initialRef = '' }: AuthPageProps) {
-  const { login, register } = useAuth();
-  const [mode, setMode] = useState<'login' | 'register'>('login');
-  const [form, setForm] = useState({
-    name: '',
-    full_name: '',
-    email: '',
-    phone: '',
-    birth_date: '',
-    password: '',
-    referral_code: initialRef,
-  });
+  const { login } = useAuth();
+  const [mode, setMode] = useState<'login' | 'request'>('login');
+  const [loginForm, setLoginForm] = useState({ member_number: '', password: '' });
+  const [reqForm, setReqForm] = useState({ name: '', phone: '', comment: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [loadingMsg, setLoadingMsg] = useState('');
+  const [requestSent, setRequestSent] = useState(false);
 
   useEffect(() => {
-    if (initialRef) setMode('register');
+    if (initialRef) setMode('request');
   }, [initialRef]);
 
-  const set = (k: string, v: string) => setForm(prev => ({ ...prev, [k]: v }));
+  const inputCls = 'w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white font-rubik text-sm focus:outline-none focus:border-gold-500/50 transition-colors placeholder-white/20';
 
-  const [loadingMsg, setLoadingMsg] = useState('');
-
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setLoading(true);
-    setLoadingMsg(mode === 'login' ? 'Выполняем вход...' : 'Создаём аккаунт...');
+    setLoadingMsg('Выполняем вход...');
     try {
-      if (mode === 'login') {
-        await login(form.email, form.password);
-      } else {
-        await register({
-          name: form.name,
-          full_name: form.full_name || form.name,
-          email: form.email,
-          phone: form.phone,
-          birth_date: form.birth_date,
-          password: form.password,
-          referral_code: form.referral_code || undefined,
-        });
-      }
+      await login(loginForm.member_number, loginForm.password);
       onSuccess();
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Ошибка';
-      // Если сервер не ответил — предлагаем повторить
       if (msg.includes('не отвечает') || msg.includes('подключиться')) {
         setError('Сервер запускается, попробуйте ещё раз через 5-10 секунд');
       } else {
@@ -64,7 +45,27 @@ export default function AuthPage({ onSuccess, initialRef = '' }: AuthPageProps) 
     }
   };
 
-  const inputCls = 'w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white font-rubik text-sm focus:outline-none focus:border-gold-500/50 transition-colors placeholder-white/20';
+  const handleRequest = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+    setLoadingMsg('Отправляем заявку...');
+    try {
+      await api.content.submitRegistrationRequest({
+        name: reqForm.name,
+        phone: reqForm.phone,
+        comment: reqForm.comment || undefined,
+        referral_code: initialRef,
+      });
+      setRequestSent(true);
+    } catch (e: unknown) {
+      const msg = e instanceof ApiError ? e.message : (e instanceof Error ? e.message : 'Ошибка');
+      setError(msg);
+    } finally {
+      setLoading(false);
+      setLoadingMsg('');
+    }
+  };
 
   return (
     <div className="min-h-screen grid-bg flex items-center justify-center px-4 pt-20 pb-10">
@@ -80,100 +81,112 @@ export default function AuthPage({ onSuccess, initialRef = '' }: AuthPageProps) 
             <span className="font-oswald text-xl tracking-widest text-white uppercase">Golden Door</span>
           </div>
           <h2 className="font-oswald text-3xl text-white font-bold mb-1">
-            {mode === 'login' ? 'Добро пожаловать' : 'Создать аккаунт'}
+            {mode === 'login' ? 'Добро пожаловать' : 'Заявка на регистрацию'}
           </h2>
           <p className="text-white/40 font-rubik text-sm">
-            {mode === 'login' ? 'Войди в свой личный кабинет' : 'Зарегистрируйся и начни открывать двери'}
+            {mode === 'login' ? 'Войди в свой личный кабинет' : 'Ваш наставник пригласил вас в проект'}
           </p>
         </div>
 
         <div className="animated-border rounded-2xl" style={{ background: 'linear-gradient(135deg, #0d1117, #111827)' }}>
           <div className="p-8">
-            <div className="flex gap-1 bg-white/5 rounded-xl p-1 mb-6 border border-white/10">
-              {(['login', 'register'] as const).map(m => (
-                <button key={m} onClick={() => { setMode(m); setError(''); }}
-                  className={`flex-1 py-2 rounded-lg font-oswald text-xs tracking-wider uppercase transition-all ${
-                    mode === m ? 'bg-gradient-to-r from-gold-700 to-gold-500 text-black shadow-lg' : 'text-white/40 hover:text-white/70'
-                  }`}>
-                  {m === 'login' ? 'Вход' : 'Регистрация'}
+            {!initialRef && (
+              <div className="flex gap-1 bg-white/5 rounded-xl p-1 mb-6 border border-white/10">
+                {(['login', 'request'] as const).map(m => (
+                  <button key={m} onClick={() => { setMode(m); setError(''); setRequestSent(false); }}
+                    className={`flex-1 py-2 rounded-lg font-oswald text-xs tracking-wider uppercase transition-all ${
+                      mode === m ? 'bg-gradient-to-r from-gold-700 to-gold-500 text-black shadow-lg' : 'text-white/40 hover:text-white/70'
+                    }`}>
+                    {m === 'login' ? 'Вход' : 'Заявка'}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {mode === 'login' && (
+              <form onSubmit={handleLogin} className="space-y-4">
+                <div>
+                  <label className="block text-xs text-black font-rubik uppercase tracking-wider mb-2">Номер пайщика</label>
+                  <input value={loginForm.member_number} onChange={e => setLoginForm(p => ({ ...p, member_number: e.target.value }))}
+                    placeholder="1001" required className={inputCls} />
+                </div>
+                <div>
+                  <label className="block text-xs text-black font-rubik uppercase tracking-wider mb-2">Пароль</label>
+                  <input type="password" value={loginForm.password} onChange={e => setLoginForm(p => ({ ...p, password: e.target.value }))}
+                    placeholder="••••••••" required className={inputCls} />
+                </div>
+
+                {error && (
+                  <div className="bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 flex items-center gap-2">
+                    <Icon name="AlertCircle" size={16} className="text-red-400 flex-shrink-0" />
+                    <span className="text-red-400 text-sm font-rubik">{error}</span>
+                  </div>
+                )}
+
+                <button type="submit" disabled={loading}
+                  className="btn-gold w-full py-4 rounded-xl text-sm mt-2 disabled:opacity-60 disabled:cursor-not-allowed">
+                  {loading ? (loadingMsg || '⏳ Подключаемся...') : 'Войти'}
                 </button>
-              ))}
-            </div>
+                {loading && (
+                  <p className="text-xs text-white/30 text-center font-rubik mt-1">
+                    Первый запуск может занять до 15 секунд
+                  </p>
+                )}
+                <p className="text-xs text-white/20 text-center mt-4 font-rubik leading-relaxed">
+                  Логин и пароль выдаёт администратор при регистрации
+                </p>
+              </form>
+            )}
 
-            <form onSubmit={handleSubmit} className="space-y-4">
-              {mode === 'register' && (
-                <>
-                  <div>
-                    <label className="block text-xs text-black font-rubik uppercase tracking-wider mb-2">Имя (отображаемое)</label>
-                    <input value={form.name} onChange={e => set('name', e.target.value)}
-                      placeholder="Александр" required className={inputCls} />
+            {mode === 'request' && !requestSent && (
+              <form onSubmit={handleRequest} className="space-y-4">
+                {initialRef && (
+                  <div className="bg-gold-500/5 border border-gold-500/20 rounded-xl px-4 py-3 flex items-center gap-2">
+                    <Icon name="Key" size={16} className="text-gold-500/60 flex-shrink-0" />
+                    <span className="text-gold-300/80 text-xs font-rubik">Реферальный код наставника: <b className="text-gold-400">{initialRef}</b></span>
                   </div>
-                  <div>
-                    <label className="block text-xs text-black font-rubik uppercase tracking-wider mb-2">ФИО полностью</label>
-                    <input value={form.full_name} onChange={e => set('full_name', e.target.value)}
-                      placeholder="Иванов Александр Петрович" className={inputCls} />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-black font-rubik uppercase tracking-wider mb-2">Телефон <span className="text-red-400">*</span></label>
-                    <input type="tel" value={form.phone} onChange={e => set('phone', e.target.value)}
-                      placeholder="+7 900 000-00-00" required className={inputCls} />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-black font-rubik uppercase tracking-wider mb-2">Дата рождения <span className="text-red-400">*</span></label>
-                    <input type="date" value={form.birth_date} onChange={e => set('birth_date', e.target.value)}
-                      required className={inputCls} />
-                  </div>
-                </>
-              )}
-
-              <div>
-                <label className="block text-xs text-black font-rubik uppercase tracking-wider mb-2">Email</label>
-                <input type="email" value={form.email} onChange={e => set('email', e.target.value)}
-                  placeholder="alex@mail.ru" required className={inputCls} />
-              </div>
-
-              <div>
-                <label className="block text-xs text-black font-rubik uppercase tracking-wider mb-2">Пароль</label>
-                <input type="password" value={form.password} onChange={e => set('password', e.target.value)}
-                  placeholder="••••••••" required className={inputCls} />
-              </div>
-
-              {mode === 'register' && (
+                )}
+                <div>
+                  <label className="block text-xs text-black font-rubik uppercase tracking-wider mb-2">Ваше имя</label>
+                  <input value={reqForm.name} onChange={e => setReqForm(p => ({ ...p, name: e.target.value }))}
+                    placeholder="Александр" required className={inputCls} />
+                </div>
+                <div>
+                  <label className="block text-xs text-black font-rubik uppercase tracking-wider mb-2">Телефон</label>
+                  <input type="tel" value={reqForm.phone} onChange={e => setReqForm(p => ({ ...p, phone: e.target.value }))}
+                    placeholder="+7 900 000-00-00" required className={inputCls} />
+                </div>
                 <div>
                   <label className="block text-xs text-black font-rubik uppercase tracking-wider mb-2">
-                    Реферальный код <span className="text-black/50">(необязательно)</span>
+                    Комментарий <span className="text-black/50">(необязательно)</span>
                   </label>
-                  <div className="relative">
-                    <input value={form.referral_code} onChange={e => set('referral_code', e.target.value.toUpperCase())}
-                      placeholder="ALEX1234"
-                      className="w-full bg-black/40 border border-gold-500/20 rounded-xl px-4 py-3 text-gold-300 font-oswald tracking-widest text-sm focus:outline-none focus:border-gold-500/50 transition-colors placeholder-gold-800/60" />
-                    <Icon name="Key" size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-gold-600/50" />
+                  <input value={reqForm.comment} onChange={e => setReqForm(p => ({ ...p, comment: e.target.value }))}
+                    placeholder="Сообщение наставнику" className={inputCls} />
+                </div>
+
+                {error && (
+                  <div className="bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 flex items-center gap-2">
+                    <Icon name="AlertCircle" size={16} className="text-red-400 flex-shrink-0" />
+                    <span className="text-red-400 text-sm font-rubik">{error}</span>
                   </div>
-                </div>
-              )}
+                )}
 
-              {error && (
-                <div className="bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 flex items-center gap-2">
-                  <Icon name="AlertCircle" size={16} className="text-red-400 flex-shrink-0" />
-                  <span className="text-red-400 text-sm font-rubik">{error}</span>
-                </div>
-              )}
-
-              <button type="submit" disabled={loading}
-                className="btn-gold w-full py-4 rounded-xl text-sm mt-2 disabled:opacity-60 disabled:cursor-not-allowed">
-                {loading ? (loadingMsg || '⏳ Подключаемся...') : mode === 'login' ? 'Войти' : 'Создать аккаунт'}
-              </button>
-              {loading && (
-                <p className="text-xs text-white/30 text-center font-rubik mt-1">
-                  Первый запуск может занять до 15 секунд
+                <button type="submit" disabled={loading}
+                  className="btn-gold w-full py-4 rounded-xl text-sm mt-2 disabled:opacity-60 disabled:cursor-not-allowed">
+                  {loading ? (loadingMsg || '⏳ Отправляем...') : 'Отправить заявку'}
+                </button>
+                <p className="text-xs text-white/20 text-center mt-4 font-rubik leading-relaxed">
+                  Заявку рассмотрит администратор. После проверки вам выдадут номер пайщика и пароль для входа
                 </p>
-              )}
-            </form>
+              </form>
+            )}
 
-            {mode === 'register' && (
-              <p className="text-xs text-white/20 text-center mt-4 font-rubik leading-relaxed">
-                Регистрируясь, вы соглашаетесь с условиями использования сервиса
-              </p>
+            {mode === 'request' && requestSent && (
+              <div className="text-center py-6">
+                <div className="text-5xl mb-4">✅</div>
+                <h3 className="font-oswald text-lg text-white mb-2">Заявка отправлена</h3>
+                <p className="text-white/40 font-rubik text-sm">Администратор свяжется с вами после проверки и выдаст данные для входа</p>
+              </div>
             )}
           </div>
         </div>

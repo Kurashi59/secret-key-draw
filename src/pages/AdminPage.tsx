@@ -2,10 +2,10 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { api } from '@/lib/api';
 import Icon from '@/components/ui/icon';
-import { ADMIN_TABS, Door, SiteContent, ContactsInfo, AdminUser, RefAgent, DepositReq } from './admin/AdminTypes';
+import { ADMIN_TABS, Door, SiteContent, ContactsInfo, AdminUser, RefAgent, DepositReq, RegistrationRequest } from './admin/AdminTypes';
 import { StatCard, PrizesEditor } from './admin/AdminPrizesEditor';
 import { AdminDoorsTab } from './admin/AdminDoorsTab';
-import { AdminUsersTab, AdminReferralsTab, AdminDepositsTab, AdminUsersModals } from './admin/AdminUsersTab';
+import { AdminUsersTab, AdminReferralsTab, AdminDepositsTab, AdminUsersModals, AdminRegistrationRequestsTab, CreateUserDraft, ApproveRegDraft } from './admin/AdminUsersTab';
 
 export default function AdminPage({ onGoAuth }: { onGoAuth: () => void }) {
   const { user } = useAuth();
@@ -37,18 +37,30 @@ export default function AdminPage({ onGoAuth }: { onGoAuth: () => void }) {
   const [refAgents, setRefAgents] = useState<RefAgent[]>([]);
   const [adminUsers, setAdminUsers] = useState<AdminUser[]>([]);
   const [deposits, setDeposits] = useState<DepositReq[]>([]);
-  const [stats, setStats] = useState({ users: 0, opens: 0, revenue: 0, referrals: 0, pending_deposits: 0 });
+  const [regRequests, setRegRequests] = useState<RegistrationRequest[]>([]);
+  const [regMsg, setRegMsg] = useState('');
+  const [stats, setStats] = useState({ users: 0, opens: 0, revenue: 0, referrals: 0, pending_deposits: 0, pending_registrations: 0 });
   const [userMsg, setUserMsg] = useState('');
   const [depositMsg, setDepositMsg] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState<{ userId: number; input: string } | null>(null);
   const [depositUser, setDepositUser] = useState<{ userId: number; amount: string } | null>(null);
+
+  const emptyCreateUserDraft: CreateUserDraft = { name: '', full_name: '', phone: '', password: '', member_number: '', mentor1_id: '', mentor2_id: '', mentor3_id: '' };
+  const [createUserOpen, setCreateUserOpen] = useState(false);
+  const [createUserDraft, setCreateUserDraft] = useState<CreateUserDraft>(emptyCreateUserDraft);
+  const [createUserMsg, setCreateUserMsg] = useState('');
+  const [createUserResult, setCreateUserResult] = useState<{ member_number: string; password: string } | null>(null);
+
+  const [approveReg, setApproveReg] = useState<ApproveRegDraft | null>(null);
+  const [approveRegMsg, setApproveRegMsg] = useState('');
+  const [approveRegResult, setApproveRegResult] = useState<{ member_number: string; password: string } | null>(null);
 
   const fileRef = useRef<HTMLInputElement>(null);
 
   const loadAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [s, d, sc, co, ra, au, dep, ps] = await Promise.all([
+      const [s, d, sc, co, ra, au, dep, ps, rr] = await Promise.all([
         api.content.adminStats(),
         api.content.getAllDoors(),
         api.content.getSite(),
@@ -57,6 +69,7 @@ export default function AdminPage({ onGoAuth }: { onGoAuth: () => void }) {
         api.content.adminUsers(),
         api.content.adminDeposits(),
         api.content.getPaymentSettings(),
+        api.content.adminRegistrationRequests(),
       ]);
       setStats(s as typeof stats);
       setDoors(d as unknown as Door[]);
@@ -66,6 +79,7 @@ export default function AdminPage({ onGoAuth }: { onGoAuth: () => void }) {
       setAdminUsers(au as unknown as AdminUser[]);
       setDeposits(dep as unknown as DepositReq[]);
       setPaymentSettings(ps as typeof paymentSettings);
+      setRegRequests(rr as unknown as RegistrationRequest[]);
       setSiteDraft(Object.fromEntries(Object.entries(sc as SiteContent).map(([k, v]) => [k, v.value])));
       setContactsDraft(Object.fromEntries(Object.entries(co as ContactsInfo).map(([k, v]) => [k, v.value])));
       const qr = (ps as Record<string, { value: string }>)?.qr_image_url?.value || '';
@@ -236,6 +250,83 @@ export default function AdminPage({ onGoAuth }: { onGoAuth: () => void }) {
     } catch (e: unknown) { setDepositMsg(e instanceof Error ? e.message : 'Ошибка'); }
   };
 
+  const submitCreateUser = async () => {
+    setCreateUserMsg('');
+    const d = createUserDraft;
+    if (!d.name || !d.mentor1_id || !d.mentor2_id || !d.mentor3_id) {
+      setCreateUserMsg('Заполните имя и всех трёх наставников');
+      return;
+    }
+    try {
+      const res = await api.auth.adminCreateUser({
+        name: d.name,
+        full_name: d.full_name || undefined,
+        phone: d.phone || undefined,
+        password: d.password || undefined,
+        member_number: d.member_number || undefined,
+        mentor1_id: +d.mentor1_id,
+        mentor2_id: +d.mentor2_id,
+        mentor3_id: +d.mentor3_id,
+      });
+      const r = res as { member_number: string; password: string };
+      setCreateUserResult({ member_number: r.member_number, password: r.password });
+      await api.content.adminUsers().then(u => setAdminUsers(u as unknown as AdminUser[]));
+      await api.content.adminStats().then(s => setStats(s as typeof stats));
+    } catch (e: unknown) { setCreateUserMsg(e instanceof Error ? e.message : 'Ошибка'); }
+  };
+
+  const closeCreateUser = () => {
+    setCreateUserOpen(false);
+    setCreateUserDraft(emptyCreateUserDraft);
+    setCreateUserMsg('');
+    setCreateUserResult(null);
+  };
+
+  const openApproveReg = (requestId: number) => {
+    setApproveReg({ requestId, mentor2_id: '', mentor3_id: '', member_number: '', password: '' });
+    setApproveRegMsg('');
+    setApproveRegResult(null);
+  };
+
+  const closeApproveReg = () => {
+    setApproveReg(null);
+    setApproveRegMsg('');
+    setApproveRegResult(null);
+  };
+
+  const submitApproveReg = async () => {
+    if (!approveReg) return;
+    setApproveRegMsg('');
+    if (!approveReg.mentor2_id || !approveReg.mentor3_id) {
+      setApproveRegMsg('Укажите второго и третьего наставника');
+      return;
+    }
+    try {
+      const res = await api.content.adminApproveRegistration({
+        request_id: approveReg.requestId,
+        mentor2_id: +approveReg.mentor2_id,
+        mentor3_id: +approveReg.mentor3_id,
+        member_number: approveReg.member_number || undefined,
+        password: approveReg.password || undefined,
+      });
+      const r = res as { member_number: string; password: string };
+      setApproveRegResult({ member_number: r.member_number, password: r.password });
+      await api.content.adminRegistrationRequests().then(rr => setRegRequests(rr as unknown as RegistrationRequest[]));
+      await api.content.adminUsers().then(u => setAdminUsers(u as unknown as AdminUser[]));
+      await api.content.adminStats().then(s => setStats(s as typeof stats));
+    } catch (e: unknown) { setApproveRegMsg(e instanceof Error ? e.message : 'Ошибка'); }
+  };
+
+  const rejectReg = async (requestId: number) => {
+    setRegMsg('');
+    try {
+      await api.content.adminRejectRegistration(requestId);
+      setRegMsg('Заявка отклонена');
+      await api.content.adminRegistrationRequests().then(rr => setRegRequests(rr as unknown as RegistrationRequest[]));
+      await api.content.adminStats().then(s => setStats(s as typeof stats));
+    } catch (e: unknown) { setRegMsg(e instanceof Error ? e.message : 'Ошибка'); }
+  };
+
   const inputCls = 'w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-white font-rubik text-sm focus:outline-none focus:border-gold-500/50 transition-colors';
 
   return (
@@ -252,6 +343,19 @@ export default function AdminPage({ onGoAuth }: { onGoAuth: () => void }) {
         onManualDeposit={manualDeposit}
         onDepositUserChange={patch => setDepositUser(prev => prev ? { ...prev, ...patch } : null)}
         onDeleteConfirmChange={patch => setDeleteConfirm(prev => prev ? { ...prev, ...patch } : null)}
+        createUserOpen={createUserOpen}
+        createUserDraft={createUserDraft}
+        createUserMsg={createUserMsg}
+        createUserResult={createUserResult}
+        onCloseCreateUser={closeCreateUser}
+        onCreateUserChange={patch => setCreateUserDraft(prev => ({ ...prev, ...patch }))}
+        onSubmitCreateUser={submitCreateUser}
+        approveReg={approveReg}
+        approveRegMsg={approveRegMsg}
+        approveRegResult={approveRegResult}
+        onCloseApproveReg={closeApproveReg}
+        onApproveRegChange={patch => setApproveReg(prev => prev ? { ...prev, ...patch } : null)}
+        onSubmitApproveReg={submitApproveReg}
       />
 
       <div className="max-w-5xl mx-auto">
@@ -271,7 +375,9 @@ export default function AdminPage({ onGoAuth }: { onGoAuth: () => void }) {
               className={`flex-1 min-w-fit py-2 px-2 rounded-lg font-oswald text-xs tracking-wider uppercase transition-all ${
                 tab === i ? 'bg-gradient-to-r from-gold-700 to-gold-500 text-black shadow-lg' : 'text-white/40 hover:text-white/70'
               }`}>
-              {t}{t === 'Заявки' && stats.pending_deposits > 0 ? ` (${stats.pending_deposits})` : ''}
+              {t}
+              {t === 'Депозиты' && stats.pending_deposits > 0 ? ` (${stats.pending_deposits})` : ''}
+              {t === 'Рег. заявки' && stats.pending_registrations > 0 ? ` (${stats.pending_registrations})` : ''}
             </button>
           ))}
         </div>
@@ -356,14 +462,25 @@ export default function AdminPage({ onGoAuth }: { onGoAuth: () => void }) {
                 onManualDeposit={manualDeposit}
                 onDepositUserChange={patch => setDepositUser(prev => prev ? { ...prev, ...patch } : null)}
                 onDeleteConfirmChange={patch => setDeleteConfirm(prev => prev ? { ...prev, ...patch } : null)}
+                onOpenCreateUser={() => setCreateUserOpen(true)}
               />
             )}
 
             {/* Рефералы */}
             {tab === 5 && <AdminReferralsTab refAgents={refAgents} />}
 
-            {/* Заявки */}
+            {/* Рег. заявки */}
             {tab === 6 && (
+              <AdminRegistrationRequestsTab
+                requests={regRequests}
+                regMsg={regMsg}
+                onOpenApprove={openApproveReg}
+                onReject={rejectReg}
+              />
+            )}
+
+            {/* Депозиты */}
+            {tab === 7 && (
               <AdminDepositsTab
                 deposits={deposits}
                 depositMsg={depositMsg}
@@ -373,7 +490,7 @@ export default function AdminPage({ onGoAuth }: { onGoAuth: () => void }) {
             )}
 
             {/* Оплата (QR-код) */}
-            {tab === 7 && (
+            {tab === 8 && (
               <div className="max-w-lg space-y-6 fade-up-3">
                 {paymentMsg && <p className={`text-sm font-rubik ${paymentMsg === 'Сохранено!' ? 'text-green-400' : 'text-red-400'}`}>{paymentMsg}</p>}
                 <div>

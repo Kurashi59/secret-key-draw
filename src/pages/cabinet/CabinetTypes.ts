@@ -43,3 +43,15 @@ export interface UserKey {
   door_color?: string;
   is_trigger?: boolean;
 }
+
+export interface MentorRef { member_number: string; name: string }
+
+export interface ReferralTreeNode {
+  id: number;
+  name: string;
+  member_number: string;
+  level: number;
+  mentor1: MentorRef | null;
+  mentor2: MentorRef | null;
+  mentor3: MentorRef | null;
+}

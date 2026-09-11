@@ -11,6 +11,10 @@ export interface User {
   role: 'user' | 'admin';
   referral_code: string;
   referred_by?: number;
+  member_number: string;
+  mentor1_id?: number;
+  mentor2_id?: number;
+  mentor3_id?: number;
   external_balance: number;
   referral_balance: number;
   balance: number;
@@ -24,21 +28,10 @@ export interface User {
   referral_invited: number;
 }
 
-export interface RegisterData {
-  name: string;
-  full_name?: string;
-  email: string;
-  phone: string;
-  birth_date: string;
-  password: string;
-  referral_code?: string;
-}
-
 interface AuthContextType {
   user: User | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<void>;
-  register: (data: RegisterData) => Promise<void>;
+  login: (memberNumber: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
 }
@@ -72,15 +65,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => { refreshUser(); }, []);
 
-  const login = async (email: string, password: string) => {
-    const data = await api.auth.login({ email, password });
+  const login = async (memberNumber: string, password: string) => {
+    const data = await api.auth.login({ member_number: memberNumber, password });
     localStorage.setItem('gd_token', data.token as string);
-    await refreshUser();
-  };
-
-  const register = async (data: RegisterData) => {
-    const resp = await api.auth.register(data);
-    localStorage.setItem('gd_token', resp.token as string);
     await refreshUser();
   };
 
@@ -91,7 +78,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout, refreshUser }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

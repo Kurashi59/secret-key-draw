@@ -65,6 +65,31 @@
       "expectedStatus": 403,
       "expectedBody": {"error": "Только для администратора"},
       "bodyMatcher": "partial"
+    },
+    {
+      "name": "Submit registration request - invalid ref code",
+      "method": "POST",
+      "path": "/?action=submit_registration_request",
+      "body": {"name": "Иван", "phone": "+79990000000", "referral_code": "NOPE0000"},
+      "expectedStatus": 400,
+      "expectedBody": {"error": "string"},
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Admin registration requests - no auth",
+      "method": "GET",
+      "path": "/?action=admin_registration_requests",
+      "expectedStatus": 403,
+      "expectedBody": {"error": "Только для администратора"},
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Referral tree - no auth",
+      "method": "GET",
+      "path": "/?action=referral_tree",
+      "expectedStatus": 401,
+      "expectedBody": {"error": "Требуется авторизация"},
+      "bodyMatcher": "partial"
     }
   ]
 }
