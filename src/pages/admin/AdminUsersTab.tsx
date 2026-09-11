@@ -1,4 +1,4 @@
-import { AdminUser, RefAgent, DepositReq, RegistrationRequest } from './AdminTypes';
+import { AdminUser, RefAgent, DepositReq, RegistrationRequest, MentorLogEntry } from './AdminTypes';
 
 const statusLabel: Record<string, string> = { pending: 'Ожидает', completed: 'Выполнено', rejected: 'Отклонено', approved: 'Одобрено' };
 const statusColor: Record<string, string> = { pending: 'text-yellow-400', completed: 'text-green-400', rejected: 'text-red-400', approved: 'text-green-400' };
@@ -403,6 +403,64 @@ export function AdminDepositsTab({ deposits, depositMsg, onConfirmDeposit, onRej
                       </div>
                     )}
                   </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const reasonLabel: Record<string, string> = {
+  user_created: 'Создание пайщика',
+  registration_approved: 'Одобрение заявки',
+  manual_update: 'Ручное изменение',
+};
+
+function MentorCell({ m }: { m: { member_number: string; name: string } | null }) {
+  if (!m) return <span className="text-white/20">—</span>;
+  return <span>№{m.member_number} <span className="text-white/30">({m.name})</span></span>;
+}
+
+export function AdminMentorLogTab({ entries }: { entries: MentorLogEntry[] }) {
+  return (
+    <div className="space-y-4 fade-up-3">
+      {entries.length === 0 ? (
+        <div className="text-center py-12 text-white/30 font-rubik">Изменений наставников ещё не было</div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm font-rubik">
+            <thead>
+              <tr className="text-left border-b border-white/10">
+                {['Пайщик','Было','Стало','Кто изменил','Причина','Дата'].map(h => (
+                  <th key={h} className="py-2 px-3 text-white/40 text-xs font-normal">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {entries.map(e => (
+                <tr key={e.id} className="border-b border-white/5 hover:bg-white/3 transition-colors align-top">
+                  <td className="py-2 px-3">
+                    <div className="text-white/80">{e.user_name}</div>
+                    <code className="text-gold-400 text-xs bg-gold-500/10 px-1.5 py-0.5 rounded">№{e.user_member_number}</code>
+                  </td>
+                  <td className="py-2 px-3 text-xs text-white/50 space-y-0.5">
+                    <div>1: <MentorCell m={e.old_mentor1} /></div>
+                    <div>2: <MentorCell m={e.old_mentor2} /></div>
+                    <div>3: <MentorCell m={e.old_mentor3} /></div>
+                  </td>
+                  <td className="py-2 px-3 text-xs text-white/80 space-y-0.5">
+                    <div>1: <MentorCell m={e.new_mentor1} /></div>
+                    <div>2: <MentorCell m={e.new_mentor2} /></div>
+                    <div>3: <MentorCell m={e.new_mentor3} /></div>
+                  </td>
+                  <td className="py-2 px-3 text-white/60 text-xs">{e.changed_by_name || '—'}</td>
+                  <td className="py-2 px-3 text-xs">
+                    <span className="text-blue-400">{reasonLabel[e.reason] || e.reason}</span>
+                  </td>
+                  <td className="py-2 px-3 text-white/40 text-xs whitespace-nowrap">{new Date(e.created_at).toLocaleString('ru')}</td>
                 </tr>
               ))}
             </tbody>

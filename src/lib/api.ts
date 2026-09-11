@@ -86,6 +86,9 @@ export const api = {
     adminUpdateMentors: (user_id: number, mentor1_id: number, mentor2_id: number, mentor3_id: number) =>
       request(a('admin_update_mentors'), { method: 'POST', body: JSON.stringify({ user_id, mentor1_id, mentor2_id, mentor3_id }) }),
 
+    adminMentorLog: (user_id?: number) =>
+      request(a('admin_mentor_log') + (user_id ? `&user_id=${user_id}` : '')),
+
     adminResetPassword: (user_id: number, password?: string) =>
       request(a('admin_reset_password'), { method: 'POST', body: JSON.stringify({ user_id, password }) }),
 

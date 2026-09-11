@@ -2,10 +2,10 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { api } from '@/lib/api';
 import Icon from '@/components/ui/icon';
-import { ADMIN_TABS, Door, SiteContent, ContactsInfo, AdminUser, RefAgent, DepositReq, RegistrationRequest } from './admin/AdminTypes';
+import { ADMIN_TABS, Door, SiteContent, ContactsInfo, AdminUser, RefAgent, DepositReq, RegistrationRequest, MentorLogEntry } from './admin/AdminTypes';
 import { StatCard, PrizesEditor } from './admin/AdminPrizesEditor';
 import { AdminDoorsTab } from './admin/AdminDoorsTab';
-import { AdminUsersTab, AdminReferralsTab, AdminDepositsTab, AdminUsersModals, AdminRegistrationRequestsTab, CreateUserDraft, ApproveRegDraft } from './admin/AdminUsersTab';
+import { AdminUsersTab, AdminReferralsTab, AdminDepositsTab, AdminUsersModals, AdminRegistrationRequestsTab, AdminMentorLogTab, CreateUserDraft, ApproveRegDraft } from './admin/AdminUsersTab';
 
 export default function AdminPage({ onGoAuth }: { onGoAuth: () => void }) {
   const { user } = useAuth();
@@ -39,6 +39,7 @@ export default function AdminPage({ onGoAuth }: { onGoAuth: () => void }) {
   const [deposits, setDeposits] = useState<DepositReq[]>([]);
   const [regRequests, setRegRequests] = useState<RegistrationRequest[]>([]);
   const [regMsg, setRegMsg] = useState('');
+  const [mentorLog, setMentorLog] = useState<MentorLogEntry[]>([]);
   const [stats, setStats] = useState({ users: 0, opens: 0, revenue: 0, referrals: 0, pending_deposits: 0, pending_registrations: 0 });
   const [userMsg, setUserMsg] = useState('');
   const [depositMsg, setDepositMsg] = useState('');
@@ -60,7 +61,7 @@ export default function AdminPage({ onGoAuth }: { onGoAuth: () => void }) {
   const loadAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [s, d, sc, co, ra, au, dep, ps, rr] = await Promise.all([
+      const [s, d, sc, co, ra, au, dep, ps, rr, ml] = await Promise.all([
         api.content.adminStats(),
         api.content.getAllDoors(),
         api.content.getSite(),
@@ -70,6 +71,7 @@ export default function AdminPage({ onGoAuth }: { onGoAuth: () => void }) {
         api.content.adminDeposits(),
         api.content.getPaymentSettings(),
         api.content.adminRegistrationRequests(),
+        api.auth.adminMentorLog(),
       ]);
       setStats(s as typeof stats);
       setDoors(d as unknown as Door[]);
@@ -80,6 +82,7 @@ export default function AdminPage({ onGoAuth }: { onGoAuth: () => void }) {
       setDeposits(dep as unknown as DepositReq[]);
       setPaymentSettings(ps as typeof paymentSettings);
       setRegRequests(rr as unknown as RegistrationRequest[]);
+      setMentorLog(ml as unknown as MentorLogEntry[]);
       setSiteDraft(Object.fromEntries(Object.entries(sc as SiteContent).map(([k, v]) => [k, v.value])));
       setContactsDraft(Object.fromEntries(Object.entries(co as ContactsInfo).map(([k, v]) => [k, v.value])));
       const qr = (ps as Record<string, { value: string }>)?.qr_image_url?.value || '';
@@ -272,6 +275,7 @@ export default function AdminPage({ onGoAuth }: { onGoAuth: () => void }) {
       setCreateUserResult({ member_number: r.member_number, password: r.password });
       await api.content.adminUsers().then(u => setAdminUsers(u as unknown as AdminUser[]));
       await api.content.adminStats().then(s => setStats(s as typeof stats));
+      await api.auth.adminMentorLog().then(ml => setMentorLog(ml as unknown as MentorLogEntry[]));
     } catch (e: unknown) { setCreateUserMsg(e instanceof Error ? e.message : 'Ошибка'); }
   };
 
@@ -314,6 +318,7 @@ export default function AdminPage({ onGoAuth }: { onGoAuth: () => void }) {
       await api.content.adminRegistrationRequests().then(rr => setRegRequests(rr as unknown as RegistrationRequest[]));
       await api.content.adminUsers().then(u => setAdminUsers(u as unknown as AdminUser[]));
       await api.content.adminStats().then(s => setStats(s as typeof stats));
+      await api.auth.adminMentorLog().then(ml => setMentorLog(ml as unknown as MentorLogEntry[]));
     } catch (e: unknown) { setApproveRegMsg(e instanceof Error ? e.message : 'Ошибка'); }
   };
 
@@ -489,8 +494,11 @@ export default function AdminPage({ onGoAuth }: { onGoAuth: () => void }) {
               />
             )}
 
+            {/* Журнал наставников */}
+            {tab === 8 && <AdminMentorLogTab entries={mentorLog} />}
+
             {/* Оплата (QR-код) */}
-            {tab === 8 && (
+            {tab === 9 && (
               <div className="max-w-lg space-y-6 fade-up-3">
                 {paymentMsg && <p className={`text-sm font-rubik ${paymentMsg === 'Сохранено!' ? 'text-green-400' : 'text-red-400'}`}>{paymentMsg}</p>}
                 <div>

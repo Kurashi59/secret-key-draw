@@ -828,6 +828,14 @@ def handler(event: dict, context) -> dict:
                 new_user_id = cur.fetchone()[0]
                 cur.execute(f"""UPDATE {S}.registration_requests SET status='approved', created_user_id=%s, processed_at=NOW() WHERE id=%s""",
                             (new_user_id, req_id))
+                cur.execute(f"SELECT name FROM {S}.users WHERE id=%s", (user['id'],))
+                admin_name_row = cur.fetchone()
+                admin_name = admin_name_row[0] if admin_name_row else ''
+                cur.execute(f"""INSERT INTO {S}.mentor_change_log
+                    (user_id, changed_by, changed_by_name, old_mentor1_id, old_mentor2_id, old_mentor3_id,
+                     new_mentor1_id, new_mentor2_id, new_mentor3_id, reason)
+                    VALUES (%s,%s,%s,NULL,NULL,NULL,%s,%s,%s,'registration_approved')""",
+                    (new_user_id, user['id'], admin_name, mentor1_id, mentor2_id, mentor3_id))
             conn.commit()
             return ok({'message': 'Пайщик зарегистрирован', 'member_number': member_number, 'password': password, 'user_id': new_user_id})
 

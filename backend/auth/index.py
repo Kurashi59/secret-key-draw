@@ -1,7 +1,7 @@
 """
 Авторизация: вход по номеру пайщика, профиль, смена пароля, управление пользователями.
 Свободная регистрация отключена — учётные записи создаёт только администратор.
-Роутинг: ?action=login|me|logout|update|change_password|admin_create_user|admin_update_mentors|admin_set_role|admin_deposit|admin_delete_user
+Роутинг: ?action=login|me|logout|update|change_password|admin_create_user|admin_update_mentors|admin_reset_password|admin_set_role|admin_deposit|admin_delete_user|admin_mentor_log
 """
 import json
 import os
@@ -270,6 +270,11 @@ def handler(event: dict, context) -> dict:
                     (name, full_name or name, fake_email, phone, ph, my_code,
                      member_number, mentor1_id, mentor2_id, mentor3_id, mentor1_id))
                 user_id = cur.fetchone()[0]
+                cur.execute(f"""INSERT INTO {S}.mentor_change_log
+                    (user_id, changed_by, changed_by_name, old_mentor1_id, old_mentor2_id, old_mentor3_id,
+                     new_mentor1_id, new_mentor2_id, new_mentor3_id, reason)
+                    VALUES (%s,%s,%s,NULL,NULL,NULL,%s,%s,%s,'user_created')""",
+                    (user_id, caller['id'], caller['name'], mentor1_id, mentor2_id, mentor3_id))
             conn.commit()
             return ok({'message': 'Пайщик создан', 'user_id': user_id, 'member_number': member_number, 'password': password})
         finally:
@@ -292,8 +297,18 @@ def handler(event: dict, context) -> dict:
             if len({mentor1_id, mentor2_id, mentor3_id}) < 3:
                 return err('Наставники должны быть разными')
             with conn.cursor() as cur:
+                cur.execute(f"SELECT mentor1_id, mentor2_id, mentor3_id FROM {S}.users WHERE id=%s", (target_id,))
+                old_row = cur.fetchone()
+                if not old_row:
+                    return err('Пользователь не найден', 404)
+                old_m1, old_m2, old_m3 = old_row
                 cur.execute(f"UPDATE {S}.users SET mentor1_id=%s, mentor2_id=%s, mentor3_id=%s, referred_by=%s WHERE id=%s",
                             (mentor1_id, mentor2_id, mentor3_id, mentor1_id, target_id))
+                cur.execute(f"""INSERT INTO {S}.mentor_change_log
+                    (user_id, changed_by, changed_by_name, old_mentor1_id, old_mentor2_id, old_mentor3_id,
+                     new_mentor1_id, new_mentor2_id, new_mentor3_id, reason)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,'manual_update')""",
+                    (target_id, caller['id'], caller['name'], old_m1, old_m2, old_m3, mentor1_id, mentor2_id, mentor3_id))
             conn.commit()
             return ok({'message': 'Наставники обновлены'})
         finally:
@@ -385,6 +400,66 @@ def handler(event: dict, context) -> dict:
                 cur.execute(f"UPDATE {S}.sessions SET expires_at=NOW() WHERE user_id=%s", (target_id,))
             conn.commit()
             return ok({'message': 'Пользователь удалён'})
+        finally:
+            conn.close()
+
+    if action == 'admin_mentor_log':
+        if not token:
+            return err('Требуется авторизация', 401)
+        conn = get_conn()
+        try:
+            caller = get_user_by_token(conn, token)
+            if not caller or caller['role'] != 'admin':
+                return err('Только для администратора', 403)
+            filter_user_id = qs.get('user_id')
+            with conn.cursor() as cur:
+                if filter_user_id:
+                    cur.execute(f"""
+                        SELECT l.id, l.user_id, u.name, u.member_number,
+                               l.changed_by, l.changed_by_name,
+                               l.old_mentor1_id, l.old_mentor2_id, l.old_mentor3_id,
+                               l.new_mentor1_id, l.new_mentor2_id, l.new_mentor3_id,
+                               l.reason, l.created_at
+                        FROM {S}.mentor_change_log l
+                        JOIN {S}.users u ON u.id = l.user_id
+                        WHERE l.user_id = %s
+                        ORDER BY l.created_at DESC LIMIT 200""", (filter_user_id,))
+                else:
+                    cur.execute(f"""
+                        SELECT l.id, l.user_id, u.name, u.member_number,
+                               l.changed_by, l.changed_by_name,
+                               l.old_mentor1_id, l.old_mentor2_id, l.old_mentor3_id,
+                               l.new_mentor1_id, l.new_mentor2_id, l.new_mentor3_id,
+                               l.reason, l.created_at
+                        FROM {S}.mentor_change_log l
+                        JOIN {S}.users u ON u.id = l.user_id
+                        ORDER BY l.created_at DESC LIMIT 200""")
+                rows = cur.fetchall()
+
+                mentor_ids = set()
+                for r in rows:
+                    for mid in (r[6], r[7], r[8], r[9], r[10], r[11]):
+                        if mid:
+                            mentor_ids.add(mid)
+                mentor_map = {}
+                if mentor_ids:
+                    cur.execute(f"SELECT id, member_number, name FROM {S}.users WHERE id = ANY(%s)", (list(mentor_ids),))
+                    for mid, mnum, mname in cur.fetchall():
+                        mentor_map[mid] = {'member_number': mnum, 'name': mname}
+
+            def mentor_info(mid):
+                return mentor_map.get(mid) if mid else None
+
+            result = []
+            for r in rows:
+                result.append({
+                    'id': r[0], 'user_id': r[1], 'user_name': r[2], 'user_member_number': r[3],
+                    'changed_by': r[4], 'changed_by_name': r[5],
+                    'old_mentor1': mentor_info(r[6]), 'old_mentor2': mentor_info(r[7]), 'old_mentor3': mentor_info(r[8]),
+                    'new_mentor1': mentor_info(r[9]), 'new_mentor2': mentor_info(r[10]), 'new_mentor3': mentor_info(r[11]),
+                    'reason': r[12], 'created_at': r[13],
+                })
+            return ok(result)
         finally:
             conn.close()
 

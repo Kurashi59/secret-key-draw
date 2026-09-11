@@ -1,4 +1,4 @@
-export const ADMIN_TABS = ['Обзор', 'Двери', 'Тексты сайта', 'Контакты', 'Пользователи', 'Рефералы', 'Рег. заявки', 'Депозиты', 'Оплата'];
+export const ADMIN_TABS = ['Обзор', 'Двери', 'Тексты сайта', 'Контакты', 'Пользователи', 'Рефералы', 'Рег. заявки', 'Депозиты', 'Журнал наставников', 'Оплата'];
 
 export const COLORS = ['#6b7280','#ef4444','#f97316','#eab308','#22c55e','#3b82f6','#8b5cf6','#ec4899','#14b8a6','#f59e0b'];
 export const RARITIES = [
@@ -37,4 +37,16 @@ export interface ReferralTreeNode {
   mentor1: { member_number: string; name: string } | null;
   mentor2: { member_number: string; name: string } | null;
   mentor3: { member_number: string; name: string } | null;
+}
+export interface MentorLogEntry {
+  id: number; user_id: number; user_name: string; user_member_number: string;
+  changed_by: number | null; changed_by_name: string;
+  old_mentor1: { member_number: string; name: string } | null;
+  old_mentor2: { member_number: string; name: string } | null;
+  old_mentor3: { member_number: string; name: string } | null;
+  new_mentor1: { member_number: string; name: string } | null;
+  new_mentor2: { member_number: string; name: string } | null;
+  new_mentor3: { member_number: string; name: string } | null;
+  reason: string;
+  created_at: string;
 }
